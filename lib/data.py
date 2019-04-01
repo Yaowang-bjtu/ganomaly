@@ -90,8 +90,8 @@ def load_data(opt):
         dataset['train'] = MNIST(root='./data', train=True, download=True, transform=transform)
         dataset['test'] = MNIST(root='./data', train=False, download=True, transform=transform)
 
-        dataset['train'].train_data, dataset['train'].train_labels, \
-        dataset['test'].test_data, dataset['test'].test_labels = get_mnist_anomaly_dataset(
+        dataset['train'].data, dataset['train'].targets, \
+        dataset['test'].data, dataset['test'].targets = get_mnist_anomaly_dataset(
             trn_img=dataset['train'].train_data,
             trn_lbl=dataset['train'].train_labels,
             tst_img=dataset['test'].test_data,
