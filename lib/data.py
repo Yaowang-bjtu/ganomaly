@@ -55,12 +55,12 @@ def load_data(opt):
         dataset['train'] = CIFAR10(root='./data', train=True, download=True, transform=transform)
         dataset['test'] = CIFAR10(root='./data', train=False, download=True, transform=transform)
 
-        dataset['train'].train_data, dataset['train'].train_labels, \
-        dataset['test'].test_data, dataset['test'].test_labels = get_cifar_anomaly_dataset(
-            trn_img=dataset['train'].train_data,
-            trn_lbl=dataset['train'].train_labels,
-            tst_img=dataset['test'].test_data,
-            tst_lbl=dataset['test'].test_labels,
+        dataset['train'].data, dataset['train'].targets, \
+        dataset['test'].data, dataset['test'].targets = get_cifar_anomaly_dataset(
+            trn_img=dataset['train'].data,
+            trn_lbl=dataset['train'].targets,
+            tst_img=dataset['test'].data,
+            tst_lbl=dataset['test'].targets,
             abn_cls_idx=classes[opt.anomaly_class]
         )
 
