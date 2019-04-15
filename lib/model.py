@@ -238,7 +238,7 @@ class Ganomaly(object):
     def train_epoch(self):
         """ Train the model for one epoch.
         """
-
+        
         self.netg.train()
         epoch_iter = 0
         for data in tqdm(self.dataloader['train'], leave=False, total=len(self.dataloader['train'])):
@@ -255,11 +255,13 @@ class Ganomaly(object):
                     self.visualizer.plot_current_errors(self.epoch, counter_ratio, errors)
 
             if self.total_steps % self.opt.save_image_freq == 0:
-                reals, fakes, fixed = self.get_current_images()
-                self.visualizer.save_current_images(self.epoch, reals, fakes, fixed)
+                # reals, fakes, fixed = self.get_current_images()
+                # self.visualizer.save_current_images(self.epoch, reals, fakes, fixed)
                 if self.opt.display:
                     self.visualizer.display_current_images(reals, fakes, fixed)
-
+        
+        reals, fakes, fixed = self.get_current_images()
+        self.visualizer.save_current_images(self.epoch, reals, fakes, fixed)
         print(">> Training model %s. Epoch %d/%d" % (self.name(), self.epoch+1, self.opt.niter))
         # self.visualizer.print_current_errors(self.epoch, errors)
     ##
@@ -277,7 +279,9 @@ class Ganomaly(object):
         for self.epoch in range(self.opt.iter, self.opt.niter):
             # Train for one epoch
             self.train_epoch()
+            total_steps_tmp = self.total_steps # self.test() well change the value of self.total_steps
             res = self.test()
+            self.total_steps = total_steps_tmp
             if res['AUC'] > best_auc:
                 best_auc = res['AUC']
                 self.save_weights(self.epoch)
