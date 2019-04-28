@@ -257,8 +257,9 @@ class Ganomaly(object):
             if self.total_steps % self.opt.save_image_freq == 0:
                 # reals, fakes, fixed = self.get_current_images()
                 # self.visualizer.save_current_images(self.epoch, reals, fakes, fixed)
-                if self.opt.display:
-                    self.visualizer.display_current_images(reals, fakes, fixed)
+                # if self.opt.display:
+                #     self.visualizer.display_current_images(reals, fakes, fixed)
+                pass
         
         reals, fakes, fixed = self.get_current_images()
         self.visualizer.save_current_images(self.epoch, reals, fakes, fixed)
@@ -279,9 +280,9 @@ class Ganomaly(object):
         for self.epoch in range(self.opt.iter, self.opt.niter):
             # Train for one epoch
             self.train_epoch()
-            total_steps_tmp = self.total_steps # self.test() well change the value of self.total_steps
+            # total_steps_tmp = self.total_steps # self.test() well change the value of self.total_steps
             res = self.test()
-            self.total_steps = total_steps_tmp
+            # self.total_steps = total_steps_tmp
             if res['AUC'] > best_auc:
                 best_auc = res['AUC']
                 self.save_weights(self.epoch)
@@ -320,10 +321,10 @@ class Ganomaly(object):
 
             # print("   Testing model %s." % self.name())
             self.times = []
-            self.total_steps = 0
+            # self.total_steps = 0
             epoch_iter = 0
             for i, data in enumerate(self.dataloader['test'], 0):
-                self.total_steps += self.opt.batchsize
+                # self.total_steps += self.opt.batchsize
                 epoch_iter += self.opt.batchsize
                 time_i = time.time()
                 self.set_input(data)
