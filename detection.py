@@ -22,7 +22,7 @@ class AnomalyDetection():
             self.options = options
         else:
             self.options={'blocks':True}
-        path = "./output/ganomaly/NanjingRail_blocks/train/weights/netG.pth"
+        path = "./output/ganomaly/NanjingRail_blocks29/train/weights/netG.pth"
         #path = "./output/{}/{}/train/weights/netG.pth".format(self.model.name().lower(), self.model.opt.dataset)
         pretrained_dict = torch.load(path)['state_dict']
         try:
@@ -69,7 +69,7 @@ class AnomalyDetection():
         batches.append(torch.empty(size=(self.model.opt.batchsize, 3, self.model.opt.isize, self.model.opt.isize)).copy_(result))    
         return batches
 
-    def __reconstruct_image(self,batches,xblocks):
+    def __reconstruct_image(self,batches,xblocks,yblocks):
         blocks=[]
         for batch in batches:
             for i in range(self.model.opt.batchsize):
@@ -78,7 +78,7 @@ class AnomalyDetection():
         
         lin_num = int(len(blocks)/xblocks)
         lines = []
-        for v in range(lin_num):
+        for v in range(yblocks):
             lines.append(np.concatenate(blocks[v*xblocks:(v+1)*xblocks],axis=1))
         rec_img = np.concatenate(lines,axis=0)
         #rec_img = np.add(rec_img,0.5)
@@ -110,7 +110,7 @@ class AnomalyDetection():
                 error = torch.mean(torch.pow((latent_i-latent_o), 2), dim=1)
                 fake_blocks.append(fake)
                 errors.append(error)
-        rec_fake = self.__reconstruct_image(fake_blocks,int(1920/128))
+        rec_fake = self.__reconstruct_image(fake_blocks,int(1920/128),int(1080/128))
         return rec_fake,errors
 
 if __name__ == '__main__':
@@ -118,7 +118,7 @@ if __name__ == '__main__':
     model = Ganomaly(opt)
     detector = AnomalyDetection(model)
 
-    img = Image.open('./data/test22.jpg')
+    img = Image.open('./data/test.jpg')
     rec,errors = detector.detect(img)
     img_fake = Image.fromarray(rec)
-    img_fake.save('./data/fake222.png')
+    img_fake.save('./data/fakex.png')
