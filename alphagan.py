@@ -303,7 +303,7 @@ class AlphaGAN(nn.Module):
         """ensure x is a Variable on the correct device"""
         if not isinstance(x, Variable):
             # if x isn't a Tensor, attempt to construct one from it
-            if not isinstance(x, torch._TensorBase):
+            if not isinstance(x, torch._C._TensorBase):
                 x = torch.Tensor(x)
             x = Variable(x, **kwargs)
         if self.is_cuda():

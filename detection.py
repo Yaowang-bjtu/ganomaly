@@ -122,3 +122,4 @@ if __name__ == '__main__':
     rec,errors = detector.detect(img)
     img_fake = Image.fromarray(rec)
     img_fake.save('./data/fakex.png')
+    print(errors)

@@ -1,7 +1,7 @@
 # alpha-GAN model
 
 import numpy as np
-
+import pandas as pd
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -9,8 +9,15 @@ from torch.nn import init, Parameter
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
 from torchvision import datasets, models, transforms
+from torchvision.datasets import ImageFolder
 
 from alphagan import AlphaGAN
+
+from options import Options
+from lib.data import load_data
+from psutil import cpu_count
+
+import pdb
 
 class ChannelsToLinear(nn.Linear):
     """Flatten a Variable to 2d and apply Linear layer"""
@@ -157,4 +164,80 @@ assert C(t).size() == (batch_size,1)
 
 
 model = AlphaGAN(E, G, D, C, latent_dim, lambd=40, z_lambd=0)
+if use_gpu:
+    model = model.cuda()
 
+diag = []
+def log_fn(d):
+    d = pd.DataFrame(d)
+    diag.append(d)
+    print(d)
+
+def checkpoint_fn(model, epoch):
+    path =  './models/cifar10_dim_{}_lambda_{}_zlambd_{}_epochs_{}.torch'.format(
+        model.latent_dim, model.lambd, model.z_lambd, epoch
+    )
+    torch.save(model.state_dict(), path)
+
+def torchvision_dataset(dset_fn, train=True):
+    dset = dset_fn(
+        data_dir,
+        train=train,
+        transform=transforms.Compose([
+            transforms.ToTensor()
+        ]),
+        target_transform=None,
+        download=True)
+    return torch.stack(list(zip(*dset))[0])*2-1
+
+if __name__ == "__main__":
+    opt = Options().parse()
+    dataset = "NanjingRail_blocks2"
+    opt.batch_size = batch_size
+    opt.isize = 32
+    # dataloader = load_data(opt)
+
+    transform = transforms.Compose([transforms.Scale(opt.isize),
+                                        transforms.CenterCrop(opt.isize),
+                                        transforms.ToTensor(),
+                                        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)), ])
+
+    dataset_train = ImageFolder('./data/{}/train'.format(dataset),transform)
+    dataset_train = torch.stack(list(zip(*dataset_train))[0])
+    dataset_test = ImageFolder('./data/{}/test'.format(dataset),transform)
+    dataset_test = torch.stack(list(zip(*dataset_test))[0])
+
+    X_train = DataLoader(dataset=dataset_train,
+                         batch_size=opt.batchsize,
+                         shuffle=True,
+                         num_workers=int(opt.workers),
+                         drop_last=False)
+    
+    X_test = DataLoader(dataset=dataset_train,
+                         batch_size=opt.batchsize,
+                         shuffle=False,
+                         num_workers=int(opt.workers),
+                         drop_last=False)
+
+
+    # X_train = dataloader['train']
+    # X_test = dataloader['test']
+
+
+    # data_dir = './data'
+    # cifar = torchvision_dataset(datasets.CIFAR10, train=True)
+    # cifar_test = torchvision_dataset(datasets.CIFAR10, train=False)
+    # num_workers = cpu_count() if use_gpu else 0
+
+    # X_train = DataLoader(cifar, batch_size=batch_size, shuffle=True,
+    #                  num_workers=num_workers, pin_memory=use_gpu)
+    # X_test = DataLoader(cifar_test, batch_size=batch_size, shuffle=False,
+    #                num_workers=num_workers, pin_memory=use_gpu)
+
+    
+    model.fit(
+        X_train, X_test,
+        n_iter=(2,1,1), n_epochs=50,
+        log_fn=log_fn, log_every=1,
+        checkpoint_fn=checkpoint_fn, checkpoint_every=2
+    )
