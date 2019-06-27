@@ -1,6 +1,7 @@
 ##
 #DIRECTORIES
 data/*
+models/*
 !data/sample
 output/
 *.pth
@@ -15,6 +16,7 @@ __pycache__/
 .ganomaly/
 
 
+
 lib/data/__pycache__/
 lib/loss/__pycache__/
 lib/models/__pycache__/
@@ -23,3 +25,5 @@ lib/__pycache__/
 
 options/__pycache__/
 utils/__pycache__/
+
+.gitignore
