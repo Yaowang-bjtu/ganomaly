@@ -16,7 +16,8 @@ from alphagan import AlphaGAN
 from options import Options
 from lib.data import load_data
 from psutil import cpu_count
-
+import matplotlib.pyplot as plt
+from torchvision.utils import make_grid
 import pdb
 
 class ChannelsToLinear(nn.Linear):
@@ -237,7 +238,17 @@ if __name__ == "__main__":
     
     model.fit(
         X_train, X_test,
-        n_iter=(2,1,1), n_epochs=50,
+        n_iter=(2,1,1), n_epochs=100,
         log_fn=log_fn, log_every=1,
         checkpoint_fn=checkpoint_fn, checkpoint_every=2
     )
+
+    model.eval()
+
+    z, x = model(128, mode='sample')
+    fig, ax = plt.subplots(1,1,figsize=(16,12))
+    ax.imshow(make_grid(
+        x.data, nrow=16, range=(-1,1), normalize=True
+    ).cpu().numpy().transpose(1,2,0), interpolation='nearest')
+
+    plt.show()

@@ -7,9 +7,10 @@ from torchvision import datasets, models, transforms
 from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader
 from torchvision.utils import make_grid
+from random import choice
 
-path = './models/cifar10_dim_128_lambda_40_zlambd_0_epochs_50.torch'
-
+#path = './models/cifar10_dim_128_lambda_40_zlambd_0_epochs_50.torch'
+path = './models/cifar10_dim_128_lambda_40_zlambd_0_epochs_100.torch'
 state_dict = torch.load(path)
 
 model.load_state_dict(state_dict)
@@ -45,10 +46,25 @@ X_test = DataLoader(dataset=dataset_train,
                     num_workers=int(opt.workers),
                     drop_last=False)
 
-z, x = model(128, mode='sample')
+# z, x = model(128, mode='sample')
+# fig, ax = plt.subplots(1,1,figsize=(16,12))
+# ax.imshow(make_grid(
+#     x.data, nrow=16, range=(-1,1), normalize=True
+# ).cpu().numpy().transpose(1,2,0), interpolation='nearest')
+
+#x = choice(list(X_test))
+x = list(X_test)[-1]
+z = model(x,mode='encode')
+x_rec = model(z, mode='generate')
+
 fig, ax = plt.subplots(1,1,figsize=(16,12))
 ax.imshow(make_grid(
     x.data, nrow=16, range=(-1,1), normalize=True
+).cpu().numpy().transpose(1,2,0), interpolation='nearest')
+
+fig, ax = plt.subplots(1,1,figsize=(16,12))
+ax.imshow(make_grid(
+    x_rec.data, nrow=16, range=(-1,1), normalize=True
 ).cpu().numpy().transpose(1,2,0), interpolation='nearest')
 
 plt.show()
