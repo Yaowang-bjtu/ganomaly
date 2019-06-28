@@ -11,11 +11,13 @@ import torch.nn as nn
 import torch.utils.data
 import torchvision.utils as vutils
 import torchvision.transforms as transforms
+from torch.utils.data import Dataset
+from torch.utils.data import DataLoader
 
 from PIL import Image
 
 class GenModel():
-    # a wrap class of generative network used for anomaly detection
+    # the virtual class of generative network used for anomaly detection
     # this model is not the acture model
     # this provides an uniform inferface in AnomlayDetector()
     def __init__(self, network):
@@ -24,72 +26,92 @@ class GenModel():
     def __call__(self, input):
         return self.base_model(input)
 
-class GanomalyModel(GenModel):
+    def get_input_size(self):
+        return self.base_model.input_size
+
+    def get_batchsize(self):
+        return self.base_model.batch_size
+
+class AnomalyModel(GenModel):
     def __init__(self, network, data_path):
         self.base_model = network
         pretrained_dict = torch.load(data_path)['state_dict']
         try:
-            self.model.netg.load_state_dict(pretrained_dict)
+            self.base_model.netg.load_state_dict(pretrained_dict)
         except IOError:
             raise IOError("netG weights not found")
+        self.base_model.eval()
 
-    
-        
+    def __call__(self, dataloader):
+        fake_blocks = []
+        with torch.no_grad():
+            for data in dataloader:
+                self.base_model.set_input(data)
+                fake, _, _ = self.base_model.netg(self.base_model.input)
+                fake_blocks.append(fake)
+
+        return fake_blocks
+
+    def get_input_size(self):
+        s = self.base_model.opt.isize
+        return (s, s)
+
+    def get_batchsize(self):
+        return self.base_model.opt.batchsize
+            
 
 class AnomalyDetector():
 
-    def __init__(self,model,options={}):
+    def __init__(self,model, 
+                blocks = True,
+                block_size = (128,128)):
         self.model = model
-        if options:
-            self.options = options
-        else:
-            self.options={'blocks':True}
-        path = "./output/ganomaly/NanjingRail_blocks29/train/weights/netG.pth"
-        #path = "./output/{}/{}/train/weights/netG.pth".format(self.model.name().lower(), self.model.opt.dataset)
-        pretrained_dict = torch.load(path)['state_dict']
-        try:
-            self.model.netg.load_state_dict(pretrained_dict)
-        except IOError:
-            raise IOError("netG weights not found")
-        print('   Loaded weights.')
+        self.blocks = blocks
+        self.block_size = block_size
 
-        self.transformer = transforms.Compose([transforms.Scale(self.model.opt.isize),
-                                        transforms.CenterCrop(self.model.opt.isize),
+        self.transformer = transforms.Compose([transforms.Scale(self.model.get_input_size()),
+                                        transforms.CenterCrop(self.model.get_input_size()),
                                         transforms.ToTensor(),
                                         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)), ])
+    
 
-    def __crop_image(self,img,block_size=(64,64),stride=(64,64)):
-        """
-        crop an image into blocks
-        """
-        blocks = []
-        img = np.array(img)
-        img_s = img.shape
-        for u in range(0,img_s[0],stride[0]):
-            for v in range(0,img_s[1],stride[1]):
-                blocks.append(img[u:u+block_size[0],v:v+block_size[1]])
-        return blocks
+    class DatasetFromImage(Dataset):
+        def __init__(self, img, block=True,block_size =(128,128), transformer=None):
+            self.transformer = transformer
+            if block:
+                self.blocks = self.__crop_image(img,block_size, block_size)
+            else:
+                self.blocks = self.transformer(np.array(img))
 
+        def __crop_image(self,img,block_size,stride):
+            """
+            crop an image into blocks
+            """
+            blocks = []
+            img = np.array(img)
+            img_s = img.shape
+            for u in range(0,img_s[0],stride[0]):
+                for v in range(0,img_s[1],stride[1]):
+                    blocks.append(self.transformer(img[u:u+block_size[0],v:v+block_size[1]]))
+            return blocks
+
+        def __len__(self):
+            return len(self.blocks)
+
+        def __getitem__(self, idx):
+            return (self.blocks[idx], 0)
+
+        
     def __preprocess(self,image):
-        if self.options['blocks']:
-            blocks = self.__crop_image(image,(128,128),(128,128))
-        else:
-            blocks = [np.array(image)]
+        dataset = self.DatasetFromImage(image,block_size = self.block_size,
+                                    transformer = self.transformer)
+        
+        data_loader = DataLoader(dataset,
+                                 batch_size = self.model.get_batchsize(),
+                                 shuffle=False,
+                                 drop_last = False)
 
-        batches = []
-        i = 0
-        result = torch.zeros(size=(self.model.opt.batchsize, 3, self.model.opt.isize, self.model.opt.isize))
-        for block in blocks:   
-            img = Image.fromarray(block)
-            res = self.transformer(img)
-            result[i] = res
-            i += 1
-            if i >= 64:
-                i = 0
-                batches.append(torch.empty(size=(self.model.opt.batchsize, 3, self.model.opt.isize, self.model.opt.isize)).copy_(result))
-
-        batches.append(torch.empty(size=(self.model.opt.batchsize, 3, self.model.opt.isize, self.model.opt.isize)).copy_(result))    
-        return batches
+        return data_loader
 
     def __reconstruct_image(self,batches,xblocks,yblocks):
         blocks=[]
@@ -120,28 +142,26 @@ class AnomalyDetector():
         return tensor
 
     def detect(self, image):
-        batches = self.__preprocess(image)
-        fake_blocks = []
-        errors = []
-        with torch.no_grad():
-            for batch in batches:
-                self.model.set_input([batch,torch.zeros(size=(64,))])
-                fake, latent_i, latent_o = self.model.netg(self.model.input)
-                fake = self.__normalization(fake)
-                #vutils.save_image(fake.data, './data/vutfack.eps', normalize=True)
-                error = torch.mean(torch.pow((latent_i-latent_o), 2), dim=1)
-                fake_blocks.append(fake)
-                errors.append(error)
+        data_loader = self.__preprocess(image)
+        fake_blocks = self.model(data_loader)
+        fake_blocks = self.__normalization(fake_blocks)
         rec_fake = self.__reconstruct_image(fake_blocks,int(1920/128),int(1080/128))
-        return rec_fake,errors
+        return rec_fake
 
 if __name__ == '__main__':
+    path = "./output/ganomaly/NanjingRail_blocks29/train/weights/netG.pth"
+
     opt = Options().parse()
-    model = Ganomaly(opt)
-    detector = AnomalyDetection(model)
+    
+    gan_network = Ganomaly(opt)
+    model = AnomalyModel(gan_network, path)
+    
+    
+    detector = AnomalyDetector(model)
 
     img = Image.open('./data/test.jpg')
     rec,errors = detector.detect(img)
     img_fake = Image.fromarray(rec)
     img_fake.save('./data/fakex.png')
     print(errors)
+
