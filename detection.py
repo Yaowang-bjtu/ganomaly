@@ -14,7 +14,29 @@ import torchvision.transforms as transforms
 
 from PIL import Image
 
-class AnomalyDetection():
+class GenModel():
+    # a wrap class of generative network used for anomaly detection
+    # this model is not the acture model
+    # this provides an uniform inferface in AnomlayDetector()
+    def __init__(self, network):
+        self.base_model = network
+
+    def __call__(self, input):
+        return self.base_model(input)
+
+class GanomalyModel(GenModel):
+    def __init__(self, network, data_path):
+        self.base_model = network
+        pretrained_dict = torch.load(data_path)['state_dict']
+        try:
+            self.model.netg.load_state_dict(pretrained_dict)
+        except IOError:
+            raise IOError("netG weights not found")
+
+    
+        
+
+class AnomalyDetector():
 
     def __init__(self,model,options={}):
         self.model = model
