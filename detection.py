@@ -8,7 +8,6 @@ import numpy as np
 from torch.autograd import Variable
 import torch.optim as optim
 import torch.nn as nn
-import torch.utils.data
 import torchvision.utils as vutils
 import torchvision.transforms as transforms
 from torch.utils.data import Dataset
