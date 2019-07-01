@@ -181,7 +181,7 @@ class AnomalyDetector():
         return rec_fake
 
 if __name__ == '__main__':
-    path = "./output/ganomaly/NanjingRail_blocks29/train/weights/netG.pth"
+    path = "./output/ganomaly/NanjingRail_blocks/train/weights/netG.pth"
     path_alpha = './models/cifar10_dim_128_lambda_40_zlambd_0_epochs_100.torch'
 
     opt = Options().parse()
@@ -197,8 +197,11 @@ if __name__ == '__main__':
 
     for index in range(22,23):
         img = Image.open('./data/test{}.jpg'.format(index))
-        rec = detector_alpha.detect(img)
-        img_fake = Image.fromarray(rec)
-        img_fake.save('./data/fake{}.png'.format(index))
+        rec_a = detector_alpha.detect(img)
+        rec_g = detector_ganomaly.detect(img)
+        img_fake_a = Image.fromarray(rec_a)
+        img_fake_a.save('./data/fake{}_a.png'.format(index))
+        img_fake_g = Image.fromarray(rec_g)
+        img_fake_g.save('./data/fake{}_g.png'.format(index))
     # print(errors)
 
