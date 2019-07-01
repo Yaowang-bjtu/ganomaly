@@ -40,7 +40,7 @@ class AnomalyModel(GenModel):
             self.base_model.netg.load_state_dict(pretrained_dict)
         except IOError:
             raise IOError("netG weights not found")
-        self.base_model.eval()
+        #self.base_model.eval()
 
     def __call__(self, dataloader):
         fake_blocks = []
@@ -81,7 +81,7 @@ class AnomalyDetector():
             if block:
                 self.blocks = self.__crop_image(img,block_size, block_size)
             else:
-                self.blocks = self.transformer(np.array(img))
+                self.blocks = self.transformer(img)
 
         def __crop_image(self,img,block_size,stride):
             """
@@ -92,7 +92,8 @@ class AnomalyDetector():
             img_s = img.shape
             for u in range(0,img_s[0],stride[0]):
                 for v in range(0,img_s[1],stride[1]):
-                    blocks.append(self.transformer(img[u:u+block_size[0],v:v+block_size[1]]))
+                    img_block = img[u:u+block_size[0],v:v+block_size[1]]
+                    blocks.append(self.transformer(Image.fromarray(img_block)))
             return blocks
 
         def __len__(self):
@@ -109,14 +110,14 @@ class AnomalyDetector():
         data_loader = DataLoader(dataset,
                                  batch_size = self.model.get_batchsize(),
                                  shuffle=False,
-                                 drop_last = False)
+                                 drop_last = True)
 
         return data_loader
 
     def __reconstruct_image(self,batches,xblocks,yblocks):
         blocks=[]
         for batch in batches:
-            for i in range(self.model.opt.batchsize):
+            for i in range(self.model.get_batchsize()):
                 #ndarr = grid.mul_(255).add_(0.5).clamp_(0, 255).permute(1, 2, 0).to('cpu', torch.uint8).numpy()
                 blocks.append(batch[i].mul_(255).add_(0.5).clamp_(0, 255).permute(1, 2, 0).to('cpu', torch.uint8).numpy())
         
@@ -128,18 +129,20 @@ class AnomalyDetector():
         #rec_img = np.add(rec_img,0.5)
         return rec_img
 
-    def __normalization(self,tensor):
-        tensor = tensor.clone()  # avoid modifying tensor in-place
+    def __normalization(self,tensor_list):
+        normalized_list = []
+        for tensor in tensor_list:
+            tensor = tensor.clone()  # avoid modifying tensor in-place
 
-        def norm_ip(img, min, max):
-            img.clamp_(min=min, max=max)
-            img.add_(-min).div_(max - min + 1e-5)
+            def norm_ip(img, min, max):
+                img.clamp_(min=min, max=max)
+                img.add_(-min).div_(max - min + 1e-5)
 
-        def norm_range(t, range):
-            norm_ip(t, float(t.min()), float(t.max()))
-        norm_range(tensor, range)
-
-        return tensor
+            def norm_range(t, range):
+                norm_ip(t, float(t.min()), float(t.max()))
+            norm_range(tensor, range)
+            normalized_list.append(tensor)
+        return normalized_list
 
     def detect(self, image):
         data_loader = self.__preprocess(image)
@@ -159,9 +162,10 @@ if __name__ == '__main__':
     
     detector = AnomalyDetector(model)
 
-    img = Image.open('./data/test.jpg')
-    rec,errors = detector.detect(img)
-    img_fake = Image.fromarray(rec)
-    img_fake.save('./data/fakex.png')
-    print(errors)
+    for index in range(1,7):
+        img = Image.open('./data/test{}.jpg'.format(index))
+        rec = detector.detect(img)
+        img_fake = Image.fromarray(rec)
+        img_fake.save('./data/fake{}.png'.format(index))
+    # print(errors)
 
