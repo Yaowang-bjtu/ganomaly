@@ -16,10 +16,12 @@ from torch.utils.data import DataLoader
 
 from PIL import Image
 
+
 class GenModel():
     # the virtual class of generative network used for anomaly detection
     # this model is not the acture model
     # this provides an uniform inferface in AnomlayDetector()
+    # one should subclass this virtual class and wrap their own GAN network
     def __init__(self, network):
         self.base_model = network
 
@@ -31,6 +33,33 @@ class GenModel():
 
     def get_batchsize(self):
         return self.base_model.batch_size
+
+class AnomalyModelAlpha(GenModel):
+    def __init__(self, network, data_path):
+        self.base_model = network
+        pretrained_dict = torch.load(data_path)
+        try:
+            self.base_model.load_state_dict(pretrained_dict)
+        except IOError:
+            raise IOError("weights not found")
+
+        self.base_model.eval()
+
+    def __call__(self, dataloader):
+        fake_batches = []
+        with torch.no_grad():
+            for data in dataloader:
+                fake = self.base_model(data[0], mode = 'reconstruct')
+                fake_batches.append(fake)
+            
+        return fake_batches
+
+    def get_input_size(self):
+        return (32, 32)
+
+    def get_batchsize(self):
+        return 64
+
 
 class AnomalyModel(GenModel):
     def __init__(self, network, data_path):
@@ -153,18 +182,22 @@ class AnomalyDetector():
 
 if __name__ == '__main__':
     path = "./output/ganomaly/NanjingRail_blocks29/train/weights/netG.pth"
+    path_alpha = './models/cifar10_dim_128_lambda_40_zlambd_0_epochs_100.torch'
 
     opt = Options().parse()
     
     gan_network = Ganomaly(opt)
-    model = AnomalyModel(gan_network, path)
-    
-    
-    detector = AnomalyDetector(model)
+    model_ganomaly = AnomalyModel(gan_network, path)
 
-    for index in range(1,7):
+    from anomaly import model as alpha_model
+    model_alpha = AnomalyModelAlpha(alpha_model, path_alpha)
+    
+    detector_ganomaly = AnomalyDetector(model_ganomaly)
+    detector_alpha = AnomalyDetector(model_alpha)
+
+    for index in range(22,23):
         img = Image.open('./data/test{}.jpg'.format(index))
-        rec = detector.detect(img)
+        rec = detector_alpha.detect(img)
         img_fake = Image.fromarray(rec)
         img_fake.save('./data/fake{}.png'.format(index))
     # print(errors)
