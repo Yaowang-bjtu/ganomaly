@@ -4,7 +4,7 @@ from options import Options
 from lib.data import load_data
 from lib.model import Ganomaly
 import numpy as np
-
+import torch
 from torch.autograd import Variable
 import torch.optim as optim
 import torch.nn as nn
