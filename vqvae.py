@@ -5,8 +5,7 @@ import numpy as numpy
 
 class ResidualBlock(nn.Module):
   def __init__(self, num_hiddens,
-    num_residual_hiddens,
-    name = None):
+    num_residual_hiddens):
     super(ResidualBlock,self).__init__()
     self._num_hiddens = num_hiddens
     self._num_residual_hiddens = num_residual_hiddens
@@ -23,8 +22,7 @@ class ResidualBlock(nn.Module):
 
 class ResidualStack(nn.Module):
   def __init__(self, num_hiddens,
-    num_residual_layers, num_residual_hiddens,
-    name = None):
+    num_residual_layers, num_residual_hiddens):
     super(ResidualStack,self).__init__()
     self._num_hiddens = num_hiddens
     self._num_residual_layers = num_residual_layers
@@ -44,3 +42,7 @@ class ResidualStack(nn.Module):
       h = h + conv1_out
     return F.relu(h)
 
+class Encoder(nn.Modele):
+  def __init__(self, num_hiddens, num_residual_layers, num_residual_hiddens):
+    super(Encoder, self).__init__()
+    
