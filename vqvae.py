@@ -62,7 +62,7 @@ class VectorQuantizer(nn.Module):
 
     embedding_shape = [embedding_dim, num_embeddings]
     # initializer = initializers.VarianceScaling(distribution='uniform')
-    self.embeddings = torch.empty(embedding_shape,dtype=dtype).uniform_(-3,3)
+    self.embeddings = torch.empty(embedding_shape,dtype=dtype).uniform_(-3,3).cuda(1)
 
     # torch.nn.init.uniform_(tensor, a=0.0, b=1.0)
 
@@ -96,7 +96,7 @@ class VectorQuantizer(nn.Module):
     encoding_indices = torch.argmax(-distances, 1)
     encodings = F.one_hot(encoding_indices,
                           self.num_embeddings)
-
+    encodings = encodings.float()
     # NB: if your code crashes with a reshape error on the line below about a
     # Tensor containing the wrong number of values, then the most likely cause
     # is that the input passed in does not have a final dimension equal to
@@ -118,7 +118,7 @@ class VectorQuantizer(nn.Module):
     perplexity = torch.exp(-torch.sum(avg_probs *
                                        torch.log(avg_probs + 1e-10)))
 
-    
+    quantized = quantized.transpose(1,3)
     return {
         'quantize': quantized,
         'loss': loss,
@@ -225,7 +225,7 @@ class VQVAEModel(nn.Module):
     self._decoder = decoder
     self._vqvae = vqvae
     self._pre_vq_conv1 = pre_vq_conv1
-    self._data_vatiance = data_variance
+    self._data_variance = data_variance
   
   def forward(self, inputs, is_training):
     z = self._pre_vq_conv1(self._encoder(inputs))
@@ -249,8 +249,11 @@ class VQVAEModel(nn.Module):
 # print(params[0].size())
 
 def main():
+
+  device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
   # Set hyper-parameters.
-  batch_size = 32
+  batch_size = 16
   image_size = 32
 
   # dataset
@@ -265,12 +268,12 @@ def main():
   print(train_data_variance)
 
   train_dataset = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
-                                          shuffle=True, num_workers=1)
+                                          shuffle=True)
 
   testset = torchvision.datasets.CIFAR10(root='./data', train=False,
                                        download=True, transform=transform)
   test_dataset = torch.utils.data.DataLoader(testset, batch_size=batch_size,
-                                         shuffle=False, num_workers=1)
+                                         shuffle=False)
 
   # classes = ('plane', 'car', 'bird', 'cat',
   #          'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
@@ -292,7 +295,7 @@ def main():
 
 
   # 100k steps should take < 30 minutes on a modern (>= 2017) GPU.
-  num_training_updates = 100
+  num_training_updates = 10000
 
   num_hiddens = 128
   num_residual_hiddens = 32
@@ -325,7 +328,7 @@ def main():
   
   model = VQVAEModel(encoder, decoder, vq_vae, pre_vq_conv1,
                    data_variance=train_data_variance)
-
+  model = model.cuda(1)
   optimizer = optim.Adam(model.parameters(),lr = learning_rate)
 
 
@@ -341,11 +344,11 @@ def main():
     return model_output
 
   for step_index, data in enumerate(train_dataset):
-    train_results = train_step(data[0])
-    train_losses.append(train_results['loss'])
-    train_recon_errors.append(train_results['recon_error'])
-    train_perplexities.append(train_results['vq_output']['perplexity'])
-    train_vqvae_loss.append(train_results['vq_output']['loss'])
+    train_results = train_step(data[0].cuda(1))
+    train_losses.append(train_results['loss'].cpu().detach().numpy())
+    train_recon_errors.append(train_results['recon_error'].cpu().detach().numpy())
+    train_perplexities.append(train_results['vq_output']['perplexity'].cpu().detach().numpy())
+    train_vqvae_loss.append(train_results['vq_output']['loss'].cpu().detach().numpy())
 
     if (step_index + 1) % 100 == 0:
       print('%d. train loss: %f ' % (step_index + 1,
@@ -468,8 +471,8 @@ if __name__ == '__main__':
   # output = transor(input)
   # print(output)
 
-  # main()
-  main_test()
+  main()
+  # main_test()
   
 
 
