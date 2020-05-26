@@ -84,6 +84,8 @@ class VectorQuantizer(nn.Module):
         encoding_indices: Tensor containing the discrete encoding indices, ie
         which element of the quantized space each input element was mapped to.
     """
+    
+    inputs = inputs.transpose(1,3)
     flat_inputs = torch.reshape(inputs, [-1, self.embedding_dim])
 
     distances = (
@@ -93,15 +95,15 @@ class VectorQuantizer(nn.Module):
 
     encoding_indices = torch.argmax(-distances, 1)
     encodings = F.one_hot(encoding_indices,
-                           self.num_embeddings,
-                           dtype=distances.dtype)
+                          self.num_embeddings)
 
     # NB: if your code crashes with a reshape error on the line below about a
     # Tensor containing the wrong number of values, then the most likely cause
     # is that the input passed in does not have a final dimension equal to
     # self.embedding_dim. Ideally we would catch this with an Assert but that
     # creates various other problems related to device placement / TPUs.
-    encoding_indices = torch.reshape(encoding_indices, torch.shape(inputs)[:-1])
+    encoding_indices = torch.reshape(encoding_indices, inputs.shape[:-1])
+    # encoding_indices = torch.reshape(encoding_indices, torch.shape(inputs)[:-1])
     quantized = self.quantize(encoding_indices)
 
     with torch.no_grad():
@@ -116,6 +118,7 @@ class VectorQuantizer(nn.Module):
     perplexity = torch.exp(-torch.sum(avg_probs *
                                        torch.log(avg_probs + 1e-10)))
 
+    
     return {
         'quantize': quantized,
         'loss': loss,
@@ -176,9 +179,9 @@ class Encoder(nn.Module):
     self._num_residual_layers = num_residual_layers
     self._num_residual_hiddens = num_residual_hiddens
 
-    self._enc_1 = nn.Conv2d(3, self._num_hiddens // 2, 4, 2)
-    self._enc_2 = nn.Conv2d(self._num_hiddens // 2, self._num_hiddens, 4, 2)
-    self._enc_3 = nn.Conv2d(self._num_hiddens, self._num_hiddens, 3, 1)
+    self._enc_1 = nn.Conv2d(3, self._num_hiddens // 2, 4, 2, padding=2)
+    self._enc_2 = nn.Conv2d(self._num_hiddens // 2, self._num_hiddens, 4, 2, padding=1)
+    self._enc_3 = nn.Conv2d(self._num_hiddens, self._num_hiddens, 3, 1, padding=1)
     
     # resbkls = collections.OrderedDict()
     # for i in range(self._num_residual_layers):
@@ -195,16 +198,17 @@ class Encoder(nn.Module):
     return self._residual_stack(h)
 
 class Decoder(nn.Module):
-  def __init__(self, num_hiddens, num_residual_layers, num_residual_hiddens):
+  def __init__(self, num_inputs, num_hiddens, num_residual_layers, num_residual_hiddens):
     super(Decoder, self).__init__()
     self._num_hiddens = num_hiddens
     self._num_residual_layers = num_residual_layers
     self._num_residual_hiddens = num_residual_hiddens
+    self._num_inputs = num_inputs
 
-    self._dec_1 = nn.Conv2d(self._num_hiddens, self._num_hiddens, 3, 1)
-    self._residual_stack = ResidualStack(self._num_hiddens,self._num_residual_layers,self._num_residual_hiddens)
-    self._dec_2 = nn.ConvTranspose2d(self._num_hiddens, self._num_hiddens // 2, 4, 2)
-    self._dec_3 = nn.ConvTranspose2d(self._num_hiddens // 2, 3, 4, 2)
+    self._dec_1 = nn.Conv2d(self._num_inputs, self._num_hiddens, 3, 1, padding=1)
+    self._residual_stack = ResidualStack(self._num_hiddens,self._num_residual_layers, self._num_residual_hiddens)
+    self._dec_2 = nn.ConvTranspose2d(self._num_hiddens, self._num_hiddens // 2, 4, 2, padding=1)
+    self._dec_3 = nn.ConvTranspose2d(self._num_hiddens // 2, 3, 4, 2, padding=1)
 
   def forward(self, inputs):
     h = self._dec_1(inputs)
@@ -311,7 +315,7 @@ def main():
 
   # # Build modules.
   encoder = Encoder(num_hiddens, num_residual_layers, num_residual_hiddens)
-  decoder = Decoder(num_hiddens, num_residual_layers, num_residual_hiddens)
+  decoder = Decoder(embedding_dim, num_hiddens, num_residual_layers, num_residual_hiddens)
   pre_vq_conv1 = nn.Conv2d(num_hiddens, embedding_dim, 1, 1)
 
   vq_vae = VectorQuantizer(
@@ -337,7 +341,7 @@ def main():
     return model_output
 
   for step_index, data in enumerate(train_dataset):
-    train_results = train_step(data)
+    train_results = train_step(data[0])
     train_losses.append(train_results['loss'])
     train_recon_errors.append(train_results['recon_error'])
     train_perplexities.append(train_results['vq_output']['perplexity'])
@@ -352,6 +356,110 @@ def main():
     if step_index == num_training_updates:
       break
 
+def main_test():
+  # Set hyper-parameters.
+  batch_size = 32
+  image_size = 32
+
+  # dataset
+  transform = transforms.Compose(
+    [transforms.ToTensor(),
+     transforms.Normalize((0.5, 0.5, 0.5), (1, 1, 1))])
+
+  trainset = torchvision.datasets.CIFAR10(root='./data', train=True,
+                                        download=True, transform=transform)
+
+  train_data_variance = np.var(trainset.data / 255.0)
+  print(train_data_variance)
+
+  train_dataset = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
+                                          shuffle=True, num_workers=1)
+
+  testset = torchvision.datasets.CIFAR10(root='./data', train=False,
+                                       download=True, transform=transform)
+  test_dataset = torch.utils.data.DataLoader(testset, batch_size=batch_size,
+                                         shuffle=False, num_workers=1)
+
+  # classes = ('plane', 'car', 'bird', 'cat',
+  #          'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
+
+  def imshow(img):
+    img = img / 1 + 0.5     # unnormalize
+    npimg = img.numpy()
+    plt.imshow(np.transpose(npimg, (1, 2, 0)))
+    plt.show()
+
+  # get some random training images
+  # dataiter = iter(trainloader)
+  # images, labels = dataiter.next()
+
+  # show images
+  # imshow(torchvision.utils.make_grid(images))
+  # # print labels
+  # print(' '.join('%5s' % classes[labels[j]] for j in range(4)))
+
+
+  # 100k steps should take < 30 minutes on a modern (>= 2017) GPU.
+  num_training_updates = 100
+
+  num_hiddens = 128
+  num_residual_hiddens = 32
+  num_residual_layers = 2
+
+  # This value is not that important, usually 64 works.
+  # This will not change the capacity in the information-bottleneck.
+  embedding_dim = 64
+
+  # The higher this value, the higher the capacity in the information bottleneck.
+  num_embeddings = 512
+
+  # commitment_cost should be set appropriately. It's often useful to try a couple
+  # of values. It mostly depends on the scale of the reconstruction cost
+  # (log p(x|z)). So if the reconstruction cost is 100x higher, the
+  # commitment_cost should also be multiplied with the same amount.
+  commitment_cost = 0.25
+
+  learning_rate = 3e-4
+
+  # # Build modules.
+  encoder = Encoder(num_hiddens, num_residual_layers, num_residual_hiddens)
+  decoder = Decoder(embedding_dim, num_hiddens, num_residual_layers, num_residual_hiddens)
+  pre_vq_conv1 = nn.Conv2d(num_hiddens, embedding_dim, 1, 1)
+
+  vq_vae = VectorQuantizer(
+      embedding_dim=embedding_dim,
+      num_embeddings=num_embeddings,
+      commitment_cost=commitment_cost)
+  
+  model = VQVAEModel(encoder, decoder, vq_vae, pre_vq_conv1,
+                   data_variance=train_data_variance)
+
+  optimizer = optim.Adam(model.parameters(),lr = learning_rate)
+
+
+  train_losses = []
+  train_recon_errors = []
+  train_perplexities = []
+  train_vqvae_loss = []
+
+  def train_step(data):
+    optimizer.zero_grad()
+    model_output = model(data, is_training=True)
+    optimizer.step()
+    return model_output
+
+  #for step_index, data in enumerate(train_dataset):
+  dataiter = iter(train_dataset)
+  data = dataiter.next()
+  input = data[0]
+  input = input.transpose(1,3)
+  print(input)
+  # output = encoder(data[0])
+  # output = pre_vq_conv1(output)
+  # output = decoder(output)
+  # print(output)
+
+
 
 if __name__ == '__main__':
 
@@ -360,5 +468,8 @@ if __name__ == '__main__':
   # output = transor(input)
   # print(output)
 
-  main()
+  # main()
+  main_test()
+  
+
 
