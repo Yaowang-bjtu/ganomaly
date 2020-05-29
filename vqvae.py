@@ -253,7 +253,7 @@ def main():
   device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
   # Set hyper-parameters.
-  batch_size = 16
+  batch_size = 32
   image_size = 32
 
   # dataset
@@ -340,6 +340,8 @@ def main():
   def train_step(data):
     optimizer.zero_grad()
     model_output = model(data, is_training=True)
+    loss = model_output['loss']
+    loss.backward()
     optimizer.step()
     return model_output
 
@@ -448,6 +450,7 @@ def main_test():
   def train_step(data):
     optimizer.zero_grad()
     model_output = model(data, is_training=True)
+    #model_output[]
     optimizer.step()
     return model_output
 
