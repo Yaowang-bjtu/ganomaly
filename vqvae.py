@@ -295,7 +295,7 @@ def main():
 
 
   # 100k steps should take < 30 minutes on a modern (>= 2017) GPU.
-  num_training_updates = 10000
+  num_training_updates = 100000
 
   num_hiddens = 128
   num_residual_hiddens = 32
@@ -345,20 +345,29 @@ def main():
     optimizer.step()
     return model_output
 
-  for step_index, data in enumerate(train_dataset):
-    train_results = train_step(data[0].cuda(1))
-    train_losses.append(train_results['loss'].cpu().detach().numpy())
-    train_recon_errors.append(train_results['recon_error'].cpu().detach().numpy())
-    train_perplexities.append(train_results['vq_output']['perplexity'].cpu().detach().numpy())
-    train_vqvae_loss.append(train_results['vq_output']['loss'].cpu().detach().numpy())
+  step_index = 0
+  ex = 0
+  for epoch in range(200):
+    for data in train_dataset:
+      train_results = train_step(data[0].cuda(1))
+      step_index = step_index + 1
+      train_losses.append(train_results['loss'].cpu().detach().numpy())
+      train_recon_errors.append(train_results['recon_error'].cpu().detach().numpy())
+      train_perplexities.append(train_results['vq_output']['perplexity'].cpu().detach().numpy())
+      train_vqvae_loss.append(train_results['vq_output']['loss'].cpu().detach().numpy())
 
-    if (step_index + 1) % 100 == 0:
-      print('%d. train loss: %f ' % (step_index + 1,
-                                    np.mean(train_losses[-100:])) +
-            ('recon_error: %.3f ' % np.mean(train_recon_errors[-100:])) +
-            ('perplexity: %.3f ' % np.mean(train_perplexities[-100:])) +
-            ('vqvae loss: %.3f' % np.mean(train_vqvae_loss[-100:])))
-    if step_index == num_training_updates:
+      if (step_index + 1) % 100 == 0:
+        print('%d. train loss: %f ' % (step_index + 1,
+                                      np.mean(train_losses[-100:])) +
+              ('recon_error: %.3f ' % np.mean(train_recon_errors[-100:])) +
+              ('perplexity: %.3f ' % np.mean(train_perplexities[-100:])) +
+              ('vqvae loss: %.3f' % np.mean(train_vqvae_loss[-100:])))
+
+      if step_index >= num_training_updates:
+        ex = 1
+        break
+    
+    if ex:
       break
 
 def main_test():
