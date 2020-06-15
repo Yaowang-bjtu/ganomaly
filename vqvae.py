@@ -6,6 +6,8 @@ import numpy as np
 import torchvision
 import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
+from torch.autograd import Function
+
 
 import collections
 from typing import Callable, Iterable, Mapping, Optional, Sequence, Text, Tuple, Union
@@ -13,6 +15,15 @@ from typing import Callable, Iterable, Mapping, Optional, Sequence, Text, Tuple,
 
 TensorLike = Union[np.ndarray, torch.Tensor]
 FloatLike = Union[float, np.floating, TensorLike]
+
+class StopGrad(Function):
+  @staticmethod
+  def forward(ctx, inputs):
+    return inputs
+
+  @staticmethod
+  def backward(ctx, grad_output):
+    return None
 
 class VectorQuantizer(nn.Module):
   """pytorch module representing the VQ-VAE layer.
@@ -106,13 +117,14 @@ class VectorQuantizer(nn.Module):
     # encoding_indices = torch.reshape(encoding_indices, torch.shape(inputs)[:-1])
     quantized = self.quantize(encoding_indices)
 
-    with torch.no_grad():
-      e_latent_loss = torch.mean((quantized - inputs)**2)
-      q_latent_loss = torch.mean((quantized - inputs)**2)
+    
+    e_latent_loss = torch.mean((StopGrad.apply(quantized) - inputs)**2)
+    q_latent_loss = torch.mean((quantized - StopGrad.apply(inputs))**2)
     loss = q_latent_loss + self.commitment_cost * e_latent_loss
 
     # Straight Through Estimator
     # quantized = inputs + tf.stop_gradient(quantized - inputs)
+    quantized = inputs + StopGrad.apply(quantized - inputs)
 
     avg_probs = torch.mean(encodings, 0)
     perplexity = torch.exp(-torch.sum(avg_probs *
