@@ -75,6 +75,9 @@ class VectorQuantizer(nn.Module):
     # initializer = initializers.VarianceScaling(distribution='uniform')
     self.embeddings = torch.empty(embedding_shape,dtype=dtype).uniform_(-3,3).cuda(1)
 
+    # self.embeddings = torch.nn.Parameter(torch.empty(embedding_shape,dtype=dtype).uniform_(-3,3),requires_grad=True)
+    # self.register_parameter('embeddings1',self.embeddings)
+
     # torch.nn.init.uniform_(tensor, a=0.0, b=1.0)
 
   def forward(self, inputs, is_training):
