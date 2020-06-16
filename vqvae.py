@@ -389,8 +389,63 @@ def main():
   torch.save(model.state_dict(),path)
 
   # test the result
-  
-'''
+  f = plt.figure(figsize=(16,8))
+  ax = f.add_subplot(1,2,1)
+  ax.plot(train_recon_errors)
+  ax.set_yscale('log')
+  ax.set_title('NMSE.')
+
+  ax = f.add_subplot(1,2,2)
+  ax.plot(train_perplexities)
+  ax.set_title('Average codebook usage (perplexity).')
+
+  # Reconstructions
+  train_batch = next(iter(train_dataset))
+  valid_batch = next(iter(test_dataset))
+
+  # Put data through the model with is_training=False, so that in the case of 
+  # using EMA the codebook is not updated.
+  train_reconstructions = model(train_batch[0],
+                                is_training=False)['x_recon'].numpy()
+  valid_reconstructions = model(valid_batch[0],
+                                is_training=False)['x_recon'].numpy()
+
+
+  def convert_batch_to_image_grid(image_batch):
+    reshaped = (image_batch.transpose(0, 2, 3, 1)
+                .reshape(4, 8, 32, 32, 3)
+                .transpose(0, 2, 1, 3, 4)
+                .reshape(4 * 32, 8 * 32, 3))
+    return reshaped + 0.5
+
+  f = plt.figure(figsize=(16,8))
+  ax = f.add_subplot(2,2,1)
+  ax.imshow(convert_batch_to_image_grid(train_batch[0].numpy()),
+            interpolation='nearest')
+  ax.set_title('training data originals')
+  plt.axis('off')
+
+  ax = f.add_subplot(2,2,2)
+  ax.imshow(convert_batch_to_image_grid(train_reconstructions),
+            interpolation='nearest')
+  ax.set_title('training data reconstructions')
+  plt.axis('off')
+
+  ax = f.add_subplot(2,2,3)
+  ax.imshow(convert_batch_to_image_grid(valid_batch[0].numpy()),
+            interpolation='nearest')
+  ax.set_title('validation data originals')
+  plt.axis('off')
+
+  ax = f.add_subplot(2,2,4)
+  ax.imshow(convert_batch_to_image_grid(valid_reconstructions),
+            interpolation='nearest')
+  ax.set_title('validation data reconstructions')
+  plt.axis('off')
+
+  plt.show()
+
+
 def main_test():
   # Set hyper-parameters.
   batch_size = 32
@@ -424,77 +479,61 @@ def main_test():
     plt.imshow(np.transpose(npimg, (1, 2, 0)))
     plt.show()
 
-  # get some random training images
-  # dataiter = iter(trainloader)
-  # images, labels = dataiter.next()
-
-  # show images
-  # imshow(torchvision.utils.make_grid(images))
-  # # print labels
-  # print(' '.join('%5s' % classes[labels[j]] for j in range(4)))
-
-
-  # 100k steps should take < 30 minutes on a modern (>= 2017) GPU.
-  num_training_updates = 100
-
-  num_hiddens = 128
-  num_residual_hiddens = 32
-  num_residual_layers = 2
-
-  # This value is not that important, usually 64 works.
-  # This will not change the capacity in the information-bottleneck.
-  embedding_dim = 64
-
-  # The higher this value, the higher the capacity in the information bottleneck.
-  num_embeddings = 512
-
-  # commitment_cost should be set appropriately. It's often useful to try a couple
-  # of values. It mostly depends on the scale of the reconstruction cost
-  # (log p(x|z)). So if the reconstruction cost is 100x higher, the
-  # commitment_cost should also be multiplied with the same amount.
-  commitment_cost = 0.25
-
-  learning_rate = 3e-4
-
-  # # Build modules.
-  encoder = Encoder(num_hiddens, num_residual_layers, num_residual_hiddens)
-  decoder = Decoder(embedding_dim, num_hiddens, num_residual_layers, num_residual_hiddens)
-  pre_vq_conv1 = nn.Conv2d(num_hiddens, embedding_dim, 1, 1)
-
-  vq_vae = VectorQuantizer(
-      embedding_dim=embedding_dim,
-      num_embeddings=num_embeddings,
-      commitment_cost=commitment_cost)
+  # Reconstructions
+  train_batch = next(iter(train_dataset))
+  valid_batch = next(iter(test_dataset))
   
-  model = VQVAEModel(encoder, decoder, vq_vae, pre_vq_conv1,
-                   data_variance=train_data_variance)
+  def convert_batch_to_image_grid_tensorflow(image_batch):
+    reshaped = (image_batch.reshape(4, 8, 32, 32, 3)
+                .transpose(0, 2, 1, 3, 4)
+                .reshape(4 * 32, 8 * 32, 3))
+    return reshaped + 0.5
+  # pytorch
+  def convert_batch_to_image_grid(image_batch):
+    reshaped = (image_batch.transpose(0, 2, 3, 1)
+                .reshape(4, 8, 32, 32, 3)
+                .transpose(0, 2, 1, 3, 4)
+                .reshape(4 * 32, 8 * 32, 3))
+    return reshaped + 0.5
 
-  optimizer = optim.Adam(model.parameters(),lr = learning_rate)
+  f = plt.figure(figsize=(16,8))
+  ax = f.add_subplot(2,2,1)
+  ax.imshow(convert_batch_to_image_grid(train_batch[0].numpy()),
+            interpolation='nearest')
+  ax.set_title('training data originals')
+  plt.axis('off')
 
+  
+  # ax = f.add_subplot(2,2,2)
+  # ax.imshow(convert_batch_to_image_grid(train_reconstructions),
+  #           interpolation='nearest')
+  # ax.set_title('training data reconstructions')
+  # plt.axis('off')
 
-  train_losses = []
-  train_recon_errors = []
-  train_perplexities = []
-  train_vqvae_loss = []
+  # ax = f.add_subplot(2,2,3)
+  # ax.imshow(convert_batch_to_image_grid(valid_batch['images'].numpy()),
+  #           interpolation='nearest')
+  # ax.set_title('validation data originals')
+  # plt.axis('off')
 
-  def train_step(data):
-    optimizer.zero_grad()
-    model_output = model(data, is_training=True)
-    #model_output[]
-    optimizer.step()
-    return model_output
+  # ax = f.add_subplot(2,2,4)
+  # ax.imshow(convert_batch_to_image_grid(valid_reconstructions),
+  #           interpolation='nearest')
+  # ax.set_title('validation data reconstructions')
+  # plt.axis('off')
+  plt.show()
 
   #for step_index, data in enumerate(train_dataset):
-  dataiter = iter(train_dataset)
-  data = dataiter.next()
-  input = data[0]
-  input = input.transpose(1,3)
-  print(input)
+  # dataiter = iter(train_dataset)
+  # data = dataiter.next()
+  # input = data[0]
+  # input = input.transpose(1,3)
+  # print(input)
   # output = encoder(data[0])
   # output = pre_vq_conv1(output)
   # output = decoder(output)
   # print(output)
-'''
+
 
 
 if __name__ == '__main__':
