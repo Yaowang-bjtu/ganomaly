@@ -73,10 +73,10 @@ class VectorQuantizer(nn.Module):
 
     embedding_shape = [embedding_dim, num_embeddings]
     # initializer = initializers.VarianceScaling(distribution='uniform')
-    self.embeddings = torch.empty(embedding_shape,dtype=dtype).uniform_(-3,3).cuda(1)
+    # self.embeddings = torch.empty(embedding_shape,dtype=dtype).uniform_(-3,3).cuda(1)
 
-    # self.embeddings = torch.nn.Parameter(torch.empty(embedding_shape,dtype=dtype).uniform_(-3,3),requires_grad=True)
-    # self.register_parameter('embeddings1',self.embeddings)
+    self.embeddings = torch.nn.Parameter(torch.empty(embedding_shape,dtype=dtype).uniform_(-3,3).cuda(1),requires_grad=True)
+    self.register_parameter('embeddings1',self.embeddings)
 
     # torch.nn.init.uniform_(tensor, a=0.0, b=1.0)
 
@@ -384,7 +384,13 @@ def main():
     
     if ex:
       break
+  # save model
+  path = './model/vqvae.pth'
+  torch.save(model.state_dict(),path)
 
+  # test the result
+  
+'''
 def main_test():
   # Set hyper-parameters.
   batch_size = 32
@@ -488,7 +494,7 @@ def main_test():
   # output = pre_vq_conv1(output)
   # output = decoder(output)
   # print(output)
-
+'''
 
 
 if __name__ == '__main__':
