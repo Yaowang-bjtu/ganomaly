@@ -18,6 +18,7 @@ from torch.utils.tensorboard import SummaryWriter
 TensorLike = Union[np.ndarray, torch.Tensor]
 FloatLike = Union[float, np.floating, TensorLike]
 
+'''
 class StopGrad(Function):
   @staticmethod
   def forward(ctx, inputs):
@@ -30,6 +31,16 @@ class StopGrad(Function):
     size, = ctx.saved_tensors
     res = torch.zeros(list(size.numpy())).cuda(1)
     return res
+'''
+
+class StopGrad(Function):
+  @staticmethod
+  def forward(ctx, inputs):
+    return inputs
+
+  @staticmethod
+  def backward(ctx, grad_output):
+    return None
 
 class VectorQuantizer(nn.Module):
   """pytorch module representing the VQ-VAE layer.
@@ -130,6 +141,7 @@ class VectorQuantizer(nn.Module):
     e_latent_loss = torch.mean((StopGrad.apply(quantized) - inputs)**2)
     q_latent_loss = torch.mean((quantized - StopGrad.apply(inputs))**2)
     loss = q_latent_loss + self.commitment_cost * e_latent_loss
+    # loss =  q_latent_loss
 
     # Straight Through Estimator
     # quantized = inputs + tf.stop_gradient(quantized - inputs)
