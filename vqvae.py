@@ -33,6 +33,108 @@ class StopGrad(Function):
 
 class VectorQuantizer(nn.Module):
   """pytorch module representing the VQ-VAE layer.
+  """
+
+  def __init__(self,
+               embedding_dim: int,
+               num_embeddings: int,
+               commitment_cost: FloatLike,
+               dtype: torch.dtype = torch.float32):
+    """Initializes a VQ-VAE module.
+
+    Args:
+      embedding_dim: dimensionality of the tensors in the quantized space.
+        Inputs to the modules must be in this format as well.
+      num_embeddings: number of vectors in the quantized space.
+      commitment_cost: scalar which controls the weighting of the loss terms
+        (see equation 4 in the paper - this variable is Beta).
+      dtype: dtype for the embeddings variable, defaults to tf.float32.
+      name: name of the module.
+    """
+    super(VectorQuantizer, self).__init__()
+    self.embedding_dim = embedding_dim
+    self.num_embeddings = num_embeddings
+    self.commitment_cost = commitment_cost
+
+    embedding_shape = [num_embeddings, embedding_dim]
+    # initializer = initializers.VarianceScaling(distribution='uniform')
+    embeddings = torch.empty(embedding_shape,dtype=dtype).uniform_(-3,3)
+    self.embedding_layer = torch.nn.Embedding(num_embeddings, embedding_dim, _weight=embeddings)
+
+    # self.embeddings = torch.nn.Parameter(torch.empty(embedding_shape,dtype=dtype).uniform_(-3,3).cuda(1),requires_grad=True)
+    # self.register_parameter('embeddings1',self.embeddings)
+
+    # torch.nn.init.uniform_(tensor, a=0.0, b=1.0)
+
+  def forward(self, inputs, is_training):
+    """Connects the module to some inputs.
+
+    Args:
+      inputs: Tensor, final dimension must be equal to embedding_dim. All other
+        leading dimensions will be flattened and treated as a large batch.
+      is_training: boolean, whether this connection is to training data.
+
+    Returns:
+      dict containing the following keys and values:
+        quantize: Tensor containing the quantized version of the input.
+        loss: Tensor containing the loss to optimize.
+        perplexity: Tensor containing the perplexity of the encodings.
+        encodings: Tensor containing the discrete encodings, ie which element
+        of the quantized space each input element was mapped to.
+        encoding_indices: Tensor containing the discrete encoding indices, ie
+        which element of the quantized space each input element was mapped to.
+    """
+    
+    inputs = inputs.transpose(1,3)
+    flat_inputs = torch.reshape(inputs, [-1, self.embedding_dim])
+
+    embeddings = self.embedding_layer.weight.T
+
+    distances = (
+        torch.sum(flat_inputs**2, 1, keepdims=True) -
+        2 * torch.matmul(flat_inputs, embeddings) +
+        torch.sum(embeddings**2, 0, keepdims=True))
+
+    encoding_indices = torch.argmax(-distances, 1)
+    encodings = F.one_hot(encoding_indices,
+                          self.num_embeddings)
+    encodings = encodings.float()
+    # NB: if your code crashes with a reshape error on the line below about a
+    # Tensor containing the wrong number of values, then the most likely cause
+    # is that the input passed in does not have a final dimension equal to
+    # self.embedding_dim. Ideally we would catch this with an Assert but that
+    # creates various other problems related to device placement / TPUs.
+    encoding_indices = torch.reshape(encoding_indices, inputs.shape[:-1])
+    # encoding_indices = torch.reshape(encoding_indices, torch.shape(inputs)[:-1])
+    
+    # quantized = self.quantize(encoding_indices)
+    quantized = self.embedding_layer(encoding_indices)
+
+    
+    e_latent_loss = torch.mean((StopGrad.apply(quantized) - inputs)**2)
+    q_latent_loss = torch.mean((quantized - StopGrad.apply(inputs))**2)
+    loss = q_latent_loss + self.commitment_cost * e_latent_loss
+
+    # Straight Through Estimator
+    # quantized = inputs + tf.stop_gradient(quantized - inputs)
+    quantized = inputs + StopGrad.apply(quantized - inputs)
+
+    avg_probs = torch.mean(encodings, 0)
+    perplexity = torch.exp(-torch.sum(avg_probs *
+                                       torch.log(avg_probs + 1e-10)))
+
+    quantized = quantized.transpose(1,3)
+    return {
+        'quantize': quantized,
+        'loss': loss,
+        'perplexity': perplexity,
+        'encodings': encodings,
+        'encoding_indices': encoding_indices,
+        'distances': distances,
+    }
+
+class VectorQuantizerOld(nn.Module):
+  """pytorch module representing the VQ-VAE layer.
 
   Implements the algorithm presented in
   'Neural Discrete Representation Learning' by van den Oord et al.
