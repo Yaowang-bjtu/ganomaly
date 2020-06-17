@@ -12,6 +12,8 @@ from torch.autograd import Function
 import collections
 from typing import Callable, Iterable, Mapping, Optional, Sequence, Text, Tuple, Union
 
+from torch.utils.tensorboard import SummaryWriter
+
 
 TensorLike = Union[np.ndarray, torch.Tensor]
 FloatLike = Union[float, np.floating, TensorLike]
@@ -19,11 +21,15 @@ FloatLike = Union[float, np.floating, TensorLike]
 class StopGrad(Function):
   @staticmethod
   def forward(ctx, inputs):
+    size = torch.tensor(inputs.shape)
+    ctx.save_for_backward(size)
     return inputs
 
   @staticmethod
   def backward(ctx, grad_output):
-    return None
+    size, = ctx.saved_tensors
+    res = torch.zeros(list(size.numpy())).cuda(1)
+    return res
 
 class VectorQuantizer(nn.Module):
   """pytorch module representing the VQ-VAE layer.
@@ -242,13 +248,13 @@ class VQVAEModel(nn.Module):
     self._pre_vq_conv1 = pre_vq_conv1
     self._data_variance = data_variance
   
-  def forward(self, inputs, is_training):
+  def forward(self, inputs, is_training=False):
     z = self._pre_vq_conv1(self._encoder(inputs))
     vq_output = self._vqvae(z, is_training=is_training)
     x_recon = self._decoder(vq_output['quantize'])
     recon_error = torch.mean((x_recon - inputs) ** 2) / self._data_variance
     loss = recon_error + vq_output['loss']
-    return {
+    return  {
         'z': z,
         'x_recon': x_recon,
         'loss': loss,
@@ -264,6 +270,8 @@ class VQVAEModel(nn.Module):
 # print(params[0].size())
 
 def main():
+
+  writer = SummaryWriter('runs1/vqvae_train')
 
   device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -343,8 +351,14 @@ def main():
   
   model = VQVAEModel(encoder, decoder, vq_vae, pre_vq_conv1,
                    data_variance=train_data_variance)
+
+
+  # train_batch = next(iter(train_dataset))
+  # writer.add_graph(model,train_batch[0])
+
   model = model.cuda(1)
   optimizer = optim.Adam(model.parameters(),lr = learning_rate)
+
 
 
   train_losses = []
@@ -377,6 +391,9 @@ def main():
               ('recon_error: %.3f ' % np.mean(train_recon_errors[-100:])) +
               ('perplexity: %.3f ' % np.mean(train_perplexities[-100:])) +
               ('vqvae loss: %.3f' % np.mean(train_vqvae_loss[-100:])))
+        writer.add_histogram('Embeddings',vq_vae.embeddings,step_index)
+        writer.add_scalar('Loss/loss',train_results['loss'],step_index)
+        writer.add_scalar('Loss/recon_error',train_results['recon_error'],step_index)
 
       if step_index >= num_training_updates:
         ex = 1
@@ -385,7 +402,7 @@ def main():
     if ex:
       break
   # save model
-  path = './model/vqvae.pth'
+  path = './models/vqvae1.pth'
   torch.save(model.state_dict(),path)
 
   # test the result
@@ -405,10 +422,10 @@ def main():
 
   # Put data through the model with is_training=False, so that in the case of 
   # using EMA the codebook is not updated.
-  train_reconstructions = model(train_batch[0],
-                                is_training=False)['x_recon'].numpy()
-  valid_reconstructions = model(valid_batch[0],
-                                is_training=False)['x_recon'].numpy()
+  train_reconstructions = model(train_batch[0].cuda(1),
+                                is_training=False)['x_recon'].cpu().detach().numpy()
+  valid_reconstructions = model(valid_batch[0].cuda(1),
+                                is_training=False)['x_recon'].cpu().detach().numpy()
 
 
   def convert_batch_to_image_grid(image_batch):
