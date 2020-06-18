@@ -5,11 +5,15 @@ from torch import optim
 from torch.utils.tensorboard import SummaryWriter
 from options import Options
 from torch.utils.data import DataLoader
+import torchvision.transforms as transforms
+from torchvision.datasets import ImageFolder
+import numpy as np
+import matplotlib.pyplot as plt
 
 def main():
 
   writer = SummaryWriter('runs1/vqvae_train')
-  path = './models/vqvae_anomaly.pth'
+  path = './models/vqvae_anomalyx.pth'
 
   device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -19,7 +23,7 @@ def main():
 
   opt = Options().parse()
   dataset = "NanjingRail_blocks2"
-  opt.batch_size = batch_size
+  opt.batchsize = batch_size
   opt.isize = image_size
 
   # dataset
@@ -46,7 +50,7 @@ def main():
                         drop_last=False)
 
 
-  train_data_variance = np.var(dataset_train.data / 255.0)
+  train_data_variance = np.var(dataset_train.data.numpy())
   print(train_data_variance)
 
   # train_dataset = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
@@ -135,9 +139,9 @@ def main():
 
   step_index = 0
   ex = 0
-  for epoch in range(200):
+  for epoch in range(2000):
     for data in train_dataset:
-      train_results = train_step(data[0].cuda(1))
+      train_results = train_step(data.cuda(1))
       step_index = step_index + 1
       train_losses.append(train_results['loss'].cpu().detach().numpy())
       train_recon_errors.append(train_results['recon_error'].cpu().detach().numpy())
@@ -150,7 +154,7 @@ def main():
               ('recon_error: %.3f ' % np.mean(train_recon_errors[-100:])) +
               ('perplexity: %.3f ' % np.mean(train_perplexities[-100:])) +
               ('vqvae loss: %.3f' % np.mean(train_vqvae_loss[-100:])))
-        writer.add_histogram('Embeddings',vq_vae.embeddings,step_index)
+        writer.add_histogram('Embeddings',vq_vae.embedding_layer.weight,step_index)
         writer.add_scalar('Loss/loss',train_results['loss'],step_index)
         writer.add_scalar('Loss/recon_error',train_results['recon_error'],step_index)
 
@@ -181,9 +185,9 @@ def main():
 
   # Put data through the model with is_training=False, so that in the case of 
   # using EMA the codebook is not updated.
-  train_reconstructions = model(train_batch[0].cuda(1),
+  train_reconstructions = model(train_batch.cuda(1),
                                 is_training=False)['x_recon'].cpu().detach().numpy()
-  valid_reconstructions = model(valid_batch[0].cuda(1),
+  valid_reconstructions = model(valid_batch.cuda(1),
                                 is_training=False)['x_recon'].cpu().detach().numpy()
 
 
@@ -196,7 +200,7 @@ def main():
 
   f = plt.figure(figsize=(16,8))
   ax = f.add_subplot(2,2,1)
-  ax.imshow(convert_batch_to_image_grid(train_batch[0].numpy()),
+  ax.imshow(convert_batch_to_image_grid(train_batch.numpy()),
             interpolation='nearest')
   ax.set_title('training data originals')
   plt.axis('off')
@@ -208,7 +212,7 @@ def main():
   plt.axis('off')
 
   ax = f.add_subplot(2,2,3)
-  ax.imshow(convert_batch_to_image_grid(valid_batch[0].numpy()),
+  ax.imshow(convert_batch_to_image_grid(valid_batch.numpy()),
             interpolation='nearest')
   ax.set_title('validation data originals')
   plt.axis('off')
@@ -220,3 +224,6 @@ def main():
   plt.axis('off')
 
   plt.show()
+
+if __name__ == '__main__':
+  main()
