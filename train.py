@@ -1,5 +1,5 @@
 """
-TRAIN GANOMALY
+TRAIN GANOMALY only
 
 . Example: Run the following command from the terminal.
     run train.py                             \
