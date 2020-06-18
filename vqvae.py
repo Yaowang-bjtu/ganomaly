@@ -18,6 +18,7 @@ from torch.utils.tensorboard import SummaryWriter
 TensorLike = Union[np.ndarray, torch.Tensor]
 FloatLike = Union[float, np.floating, TensorLike]
 
+'''
 class StopGrad(Function):
   @staticmethod
   def forward(ctx, inputs):
@@ -30,6 +31,16 @@ class StopGrad(Function):
     size, = ctx.saved_tensors
     res = torch.zeros(list(size.numpy())).cuda(1)
     return res
+'''
+
+class StopGrad(Function):
+  @staticmethod
+  def forward(ctx, inputs):
+    return inputs
+
+  @staticmethod
+  def backward(ctx, grad_output):
+    return None
 
 class VectorQuantizer(nn.Module):
   """pytorch module representing the VQ-VAE layer.
@@ -371,9 +382,54 @@ class VQVAEModel(nn.Module):
 # print(len(params))
 # print(params[0].size())
 
+def createmodel():
+  num_hiddens = 128
+  num_residual_hiddens = 32
+  num_residual_layers = 2
+
+  # This value is not that important, usually 64 works.
+  # This will not change the capacity in the information-bottleneck.
+  embedding_dim = 64
+
+  # The higher this value, the higher the capacity in the information bottleneck.
+  num_embeddings = 512
+
+  # commitment_cost should be set appropriately. It's often useful to try a couple
+  # of values. It mostly depends on the scale of the reconstruction cost
+  # (log p(x|z)). So if the reconstruction cost is 100x higher, the
+  # commitment_cost should also be multiplied with the same amount.
+  commitment_cost = 0.25
+
+  learning_rate = 3e-4
+
+  # # Build modules.
+  encoder = Encoder(num_hiddens, num_residual_layers, num_residual_hiddens)
+  decoder = Decoder(embedding_dim, num_hiddens, num_residual_layers, num_residual_hiddens)
+  pre_vq_conv1 = nn.Conv2d(num_hiddens, embedding_dim, 1, 1)
+
+  vq_vae = VectorQuantizer(
+      embedding_dim=embedding_dim,
+      num_embeddings=num_embeddings,
+      commitment_cost=commitment_cost)
+  
+  model = VQVAEModel(encoder, decoder, vq_vae, pre_vq_conv1,
+                   data_variance=1)
+
+
+  # train_batch = next(iter(train_dataset))
+  # writer.add_graph(model,train_batch[0])
+
+  model = model.cuda(1)
+
+  return model
+
+vqvaemodel = createmodel()
+
+
 def main():
 
-  writer = SummaryWriter('runs1/vqvae_train')
+  writer = SummaryWriter('runs2/vqvae_train')
+  path = './models/vqvae_New_None.pth'
 
   device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -460,6 +516,7 @@ def main():
 
   model = model.cuda(1)
   optimizer = optim.Adam(model.parameters(),lr = learning_rate)
+  #optimizer = optim.SGD(model.parameters(),lr = learning_rate)
 
 
 
@@ -493,7 +550,7 @@ def main():
               ('recon_error: %.3f ' % np.mean(train_recon_errors[-100:])) +
               ('perplexity: %.3f ' % np.mean(train_perplexities[-100:])) +
               ('vqvae loss: %.3f' % np.mean(train_vqvae_loss[-100:])))
-        writer.add_histogram('Embeddings',vq_vae.embeddings,step_index)
+        writer.add_histogram('Embeddings',vq_vae.embedding_layer.weight,step_index)
         writer.add_scalar('Loss/loss',train_results['loss'],step_index)
         writer.add_scalar('Loss/recon_error',train_results['recon_error'],step_index)
 
@@ -504,7 +561,7 @@ def main():
     if ex:
       break
   # save model
-  path = './models/vqvae1.pth'
+
   torch.save(model.state_dict(),path)
 
   # test the result
@@ -657,12 +714,12 @@ def main_test():
 
 if __name__ == '__main__':
 
-  # input = torch.ones(3,32,32)
+  input = torch.ones(3,32,32)
   # transor = transforms.Normalize((0.5, 0.5, 0.5), (1, 1, 1))
   # output = transor(input)
   # print(output)
-
-  main()
+  
+  #main()
   # main_test()
   
 
