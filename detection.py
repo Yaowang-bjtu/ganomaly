@@ -86,7 +86,27 @@ class AnomalyModel(GenModel):
 
     def get_batchsize(self):
         return self.base_model.opt.batchsize
-            
+
+class AnomalyModelVQ(GenModel):
+    def __init__(self, network, data_path):
+        self.base_model = network
+        pretrained_data = torch.load(data_path)
+        self.base_model.load_state_dict(pretrained_data)
+
+    def __call__(self, dataloader):
+        fake_blocks = []
+        with torch.no_grad():
+            for data in dataloader:
+                fake = self.base_model(data[0].cuda(1))['x_recon']
+                fake_blocks.append(fake)
+
+        return fake_blocks 
+
+    def get_input_size(self):
+        return (32, 32)
+
+    def get_batchsize(self):
+        return 32
 
 class AnomalyDetector():
 
@@ -182,6 +202,7 @@ class AnomalyDetector():
 if __name__ == '__main__':
     path = "./output/ganomaly/NanjingRail_blocks/train/weights/netG.pth"
     path_alpha = './models/cifar10_dim_128_lambda_40_zlambd_0_epochs_100.torch'
+    path_vq = './models/vqvae_anomaly.pth'
 
     opt = Options().parse()
     
@@ -190,17 +211,26 @@ if __name__ == '__main__':
 
     from anomaly import model as alpha_model
     model_alpha = AnomalyModelAlpha(alpha_model, path_alpha)
+
+    from vqvae import vqvaemodel
+    model_vqvae = AnomalyModelVQ(vqvaemodel, path_vq)
     
     detector_ganomaly = AnomalyDetector(model_ganomaly)
     detector_alpha = AnomalyDetector(model_alpha)
+    detector_vqvae = AnomalyDetector(model_vqvae)
+    
 
-    for index in range(22,23):
+
+    for index in range(21,22):
         img = Image.open('./data/test{}.jpg'.format(index))
         rec_a = detector_alpha.detect(img)
         rec_g = detector_ganomaly.detect(img)
+        rec_v = detector_vqvae.detect(img)
         img_fake_a = Image.fromarray(rec_a)
         img_fake_a.save('./data/fake{}_a.png'.format(index))
         img_fake_g = Image.fromarray(rec_g)
         img_fake_g.save('./data/fake{}_g.png'.format(index))
+        img_fake_v = Image.fromarray(rec_v)
+        img_fake_v.save('./data/fake{}_v.png'.format(index))
     # print(errors)
 
