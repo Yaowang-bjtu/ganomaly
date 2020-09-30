@@ -26,4 +26,4 @@ lib/__pycache__/
 options/__pycache__/
 utils/__pycache__/
 
-.gitignore
+runs*
