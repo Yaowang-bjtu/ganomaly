@@ -1,20 +1,24 @@
 import torch
 import torch.nn as nn
 from torchvision import datasets, transforms
-from modules import GatedPixelCNN
+from pixelcnn import GatedPixelCNN
 import numpy as np
 from torchvision.utils import save_image
 import time
+from torchvision.datasets import ImageFolder
+from torch.utils.data import DataLoader
 
 
 BATCH_SIZE = 32
 N_EPOCHS = 100
 PRINT_INTERVAL = 100
 ALWAYS_SAVE = True
-DATASET = 'FashionMNIST'  # CIFAR10 | MNIST | FashionMNIST
+DATASET = 'RAIL'  # CIFAR10 | MNIST | FashionMNIST
+#DATASET = 'FashionMNIST'  # CIFAR10 | MNIST | FashionMNIST
+dataset_name = "NanjingRail_blocks2"
 NUM_WORKERS = 4
 
-IMAGE_SHAPE = (28, 28)  # (32, 32) | (28, 28)
+IMAGE_SHAPE = (32, 32)  # (32, 32) | (28, 28)
 INPUT_DIM = 3  # 3 (RGB) | 1 (Grayscale)
 K = 256
 DIM = 64
@@ -22,20 +26,43 @@ N_LAYERS = 15
 LR = 3e-4
 
 
-train_loader = torch.utils.data.DataLoader(
-    eval('datasets.'+DATASET)(
-        '../data/{}/'.format(DATASET), train=True, download=True,
-        transform=transforms.ToTensor(),
-    ), batch_size=BATCH_SIZE, shuffle=False,
-    num_workers=NUM_WORKERS, pin_memory=True
-)
-test_loader = torch.utils.data.DataLoader(
-    eval('datasets.'+DATASET)(
-        '../data/{}/'.format(DATASET), train=False,
-        transform=transforms.ToTensor(),
-    ), batch_size=BATCH_SIZE, shuffle=False,
-    num_workers=NUM_WORKERS, pin_memory=True
-)
+if DATASET == "RAIL":
+    transform = transforms.Compose([transforms.Scale(IMAGE_SHAPE[0]),
+                                            transforms.CenterCrop(IMAGE_SHAPE[0]),
+                                            transforms.ToTensor(), ])
+
+    dataset_train = ImageFolder('./data/{}/train'.format(dataset_name),transform)
+    #dataset_train = torch.stack(list(zip(*dataset_train))[0])
+    dataset_test = ImageFolder('./data/{}/test'.format(dataset_name),transform)
+    #dataset_test = torch.stack(list(zip(*dataset_test))[0])
+
+    train_loader = DataLoader(dataset=dataset_train,
+                            batch_size=BATCH_SIZE,
+                            shuffle=True,
+                            num_workers=int(NUM_WORKERS),
+                            drop_last=False)
+    
+    test_loader = DataLoader(dataset=dataset_train,
+                            batch_size=BATCH_SIZE,
+                            shuffle=False,
+                            num_workers=int(NUM_WORKERS),
+                            drop_last=False)
+
+else:
+    train_loader = torch.utils.data.DataLoader(
+        eval('datasets.'+DATASET)(
+            '../data/{}/'.format(DATASET), train=True, download=True,
+            transform=transforms.ToTensor(),
+        ), batch_size=BATCH_SIZE, shuffle=False,
+        num_workers=NUM_WORKERS, pin_memory=True
+    )
+    test_loader = torch.utils.data.DataLoader(
+        eval('datasets.'+DATASET)(
+            '../data/{}/'.format(DATASET), train=False,
+            transform=transforms.ToTensor(),
+        ), batch_size=BATCH_SIZE, shuffle=False,
+        num_workers=NUM_WORKERS, pin_memory=True
+    )
 
 model = GatedPixelCNN(K, DIM, N_LAYERS).cuda()
 criterion = nn.CrossEntropyLoss().cuda()
@@ -97,16 +124,17 @@ def test():
 
 
 def generate_samples():
-    label = torch.arange(10).expand(10, 10).contiguous().view(-1)
+    #label = torch.arange(10).expand(10, 10).contiguous().view(-1)
+    label = torch.zeros((3,3)).view(-1)
     label = label.long().cuda()
 
-    x_tilde = model.generate(label, shape=IMAGE_SHAPE, batch_size=100)
+    x_tilde = model.generate(label, shape=IMAGE_SHAPE, batch_size=9)
     images = x_tilde.cpu().data.float() / (K - 1)
 
     save_image(
         images[:, None],
         'samples/pixelcnn_baseline_samples_{}.png'.format(DATASET),
-        nrow=10
+        nrow=3
     )
 
 
