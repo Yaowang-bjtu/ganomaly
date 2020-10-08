@@ -9,9 +9,11 @@ from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader
 
 
+RUN = 'test' #| "train"
+
 BATCH_SIZE = 32
-N_EPOCHS = 100
-PRINT_INTERVAL = 100
+N_EPOCHS = 1000
+PRINT_INTERVAL = 10
 ALWAYS_SAVE = True
 DATASET = 'RAIL'  # CIFAR10 | MNIST | FashionMNIST
 #DATASET = 'FashionMNIST'  # CIFAR10 | MNIST | FashionMNIST
@@ -42,7 +44,7 @@ if DATASET == "RAIL":
                             num_workers=int(NUM_WORKERS),
                             drop_last=False)
     
-    test_loader = DataLoader(dataset=dataset_train,
+    test_loader = DataLoader(dataset=dataset_test,
                             batch_size=BATCH_SIZE,
                             shuffle=False,
                             num_workers=int(NUM_WORKERS),
@@ -64,7 +66,7 @@ else:
         num_workers=NUM_WORKERS, pin_memory=True
     )
 
-model = GatedPixelCNN(K, DIM, N_LAYERS).cuda()
+model = GatedPixelCNN(K, DIM, N_LAYERS,n_classes=1).cuda()
 criterion = nn.CrossEntropyLoss().cuda()
 opt = torch.optim.Adam(model.parameters(), lr=LR)
 
@@ -138,20 +140,44 @@ def generate_samples():
     )
 
 
-BEST_LOSS = 999
-LAST_SAVED = -1
-for epoch in range(1, N_EPOCHS):
-    print("\nEpoch {}:".format(epoch))
-    train()
-    cur_loss = test()
+if RUN == 'test':
+    model.load_state_dict(torch.load('models/{}_pixelcnn.pt'.format(DATASET)))
+    #generate_samples()
+    #(x,label) = list(test_loader)[-3]
+    normal_likelihood = []
+    abnormal_likelihood = []
+    for x, label in test_loader:
+        x = (x[:, 0] * (K-1)).long().cuda()
+        #print(label)
+        label_in = torch.zeros(len(label)).long().cuda() 
+        #print(label_in)
+        res = model.likelihood(x,label_in)
+        normal_res = res[label == 0]
+        normal_likelihood.append(normal_res.cpu().detach().numpy())
+        abnormal_res = res[label == 1]
+        abnormal_likelihood.append(abnormal_res.cpu().detach().numpy())
+        #print(res)
+    print(np.mean(np.hstack(normal_likelihood)))
+    print(np.mean(np.hstack(abnormal_likelihood)))
 
-    if ALWAYS_SAVE or cur_loss <= BEST_LOSS:
-        BEST_LOSS = cur_loss
-        LAST_SAVED = epoch
+    # for res in normal_likelihood:
+    #     res_np = res.cup().detach().numpy()
 
-        print("Saving model!")
-        torch.save(model.state_dict(), 'models/{}_pixelcnn.pt'.format(DATASET))
-    else:
-        print("Not saving model! Last saved: {}".format(LAST_SAVED))
+else:
+    BEST_LOSS = 999
+    LAST_SAVED = -1
+    for epoch in range(1, N_EPOCHS):
+        print("\nEpoch {}:".format(epoch))
+        train()
+        cur_loss = test()
 
-    generate_samples()
+        if ALWAYS_SAVE or cur_loss <= BEST_LOSS:
+            BEST_LOSS = cur_loss
+            LAST_SAVED = epoch
+
+            print("Saving model!")
+            torch.save(model.state_dict(), 'models/{}_pixelcnn.pt'.format(DATASET))
+        else:
+            print("Not saving model! Last saved: {}".format(LAST_SAVED))
+
+        generate_samples()
