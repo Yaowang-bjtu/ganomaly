@@ -161,7 +161,7 @@ if RUN == 'test':
     print(np.mean(np.hstack(abnormal_likelihood)))
 
     # for res in normal_likelihood:
-    #     res_np = res.cup().detach().numpy()
+    #     res_np = res.cpu().detach().numpy()
 
 else:
     BEST_LOSS = 999

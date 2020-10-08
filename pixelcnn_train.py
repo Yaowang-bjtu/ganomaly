@@ -3,12 +3,16 @@ import torch
 import torch.nn.functional as F
 
 from options import Options
-
+from torch.utils.data import DataLoader
+import torchvision.transforms as transforms
+from torchvision.datasets import ImageFolder
 from pixelcnn import GatedPixelCNN
+from torch.utils.tensorboard import SummaryWriter
 
 global_steps = 0
 
 def train(data_loader, model, prior, optimizer, device, writer):
+    global global_steps
     for images in data_loader:
         with torch.no_grad():
             images = images.to(device)
@@ -16,7 +20,7 @@ def train(data_loader, model, prior, optimizer, device, writer):
             latents = latents.detach()
 
         
-        logits = prior(latents, torch.tensor(0).to(device))
+        logits = prior(latents, torch.zeros(latents.shape[0]).long().to(device))
         logits = logits.permute(0, 2, 3, 1).contiguous()
 
         optimizer.zero_grad()
@@ -25,28 +29,28 @@ def train(data_loader, model, prior, optimizer, device, writer):
         loss.backward()
 
         # Logs
-        writer.add_scalar('loss/train', loss.item(), args.steps)
+        writer.add_scalar('loss/train', loss.item(), global_steps)
 
         optimizer.step()
-        global_steps += 1
+        global_steps = global_steps + 1
 
-def test(data_loader, model, prior, args, writer):
+def test(data_loader, model, prior, device, writer):
     with torch.no_grad():
         loss = 0.
         for images in data_loader:
-            images = images.to(args.device)
+            images = images.to(device)
 
             latents = model(images)['vq_output']['encoding_indices']
             latents = latents.detach()
-            logits = prior(latents, torch.tensor(0).to(device))
+            logits = prior(latents, torch.zeros(latents.shape[0]).long().to(device))
             logits = logits.permute(0, 2, 3, 1).contiguous()
-            loss += F.cross_entropy(logits.view(-1, args.k),
+            loss += F.cross_entropy(logits.view(-1, 512),
                                     latents.view(-1))
 
         loss /= len(data_loader)
 
     # Logs
-    writer.add_scalar('loss/valid', loss.item(), args.steps)
+    writer.add_scalar('loss/valid', loss.item(), global_steps)
 
     return loss.item()
 
@@ -86,10 +90,10 @@ def main(args):
                             drop_last=False)
 
     from vqvae import vqvaemodel
-    device = torch.device("cuda1" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
     model = vqvaemodel.cuda(1)
     path_vq = './models/vqvae_anomaly.pth'
-    pretrained_data = torch.load(data_path)
+    pretrained_data = torch.load(path_vq)
     model.load_state_dict(pretrained_data)
     model.eval()
 
@@ -99,19 +103,77 @@ def main(args):
     optimizer = torch.optim.Adam(prior.parameters(), lr=3e-4)
 
     best_loss = -1.
-    for epoch in range(10):
+    for epoch in range(100):
+        
         train(train_dataset, model, prior, optimizer, device, writer)
         # The validation loss is not properly computed since
         # the classes in the train and valid splits of Mini-Imagenet
         # do not overlap.
-        loss = test(valid_loader, model, prior, device, writer)
+        
+        loss = test(train_dataset, model, prior, device, writer)
+        print("EPOCH{}, loss={}".format(epoch,loss))
 
         if (epoch == 0) or (loss < best_loss):
             best_loss = loss
             with open(save_filename, 'wb') as f:
                 torch.save(prior.state_dict(), f)
 
+def likelihood_test():
+    save_filename = './models/{0}/prior.pt'.format('pixelcnn')
+
+    batch_size = 32
+    image_size = 32
+
+    opt = Options().parse()
+    dataset = "NanjingRail_blocks2"
+    opt.batchsize = batch_size
+    opt.isize = image_size
+    
+    transform = transforms.Compose([transforms.Scale(opt.isize),
+                                            transforms.CenterCrop(opt.isize),
+                                            transforms.ToTensor(),
+                                            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)), ])
+
+
+    dataset_test = ImageFolder('./data/{}/test'.format(dataset),transform)
+    test_dataset = DataLoader(dataset=dataset_train,
+                            batch_size=opt.batchsize,
+                            shuffle=False,
+                            num_workers=int(opt.workers),
+                            drop_last=False)    
+
+    from vqvae import vqvaemodel
+    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+    model = vqvaemodel.cuda(1)
+    path_vq = './models/vqvae_anomaly.pth'
+    pretrained_data = torch.load(path_vq)
+    model.load_state_dict(pretrained_data)
+    model.eval()
+
+    prior = GatedPixelCNN(512, 64,
+        15, n_classes=1).to(device)    
+
+    prior.load_state_dict(torch.load(save_filename))
+    #generate_samples()
+    #(x,label) = list(test_loader)[-3]
+    normal_likelihood = []
+    abnormal_likelihood = []
+    for x, label in test_dataset:
+        
+    #     #print(label)
+    #     label_in = torch.zeros(len(label)).long().cuda() 
+    #     #print(label_in)
+    #     res = model.likelihood(x,label_in)
+    #     normal_res = res[label == 0]
+    #     normal_likelihood.append(normal_res.cpu().detach().numpy())
+    #     abnormal_res = res[label == 1]
+    #     abnormal_likelihood.append(abnormal_res.cpu().detach().numpy())
+    #     #print(res)
+    # print(np.mean(np.hstack(normal_likelihood)))
+    # print(np.mean(np.hstack(abnormal_likelihood)))    
+
+
+
 if __name__ == '__main__':
 
-
-    main()
+    main('')
