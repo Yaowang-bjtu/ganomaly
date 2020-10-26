@@ -10,6 +10,8 @@ from pixelcnn import GatedPixelCNN
 from torch.utils.tensorboard import SummaryWriter
 
 global_steps = 0
+#!!!!!!!! select correct dataset here!!!!!!!!
+DATASET = 'C0004'
 
 def train(data_loader, model, prior, optimizer, device, writer):
     global global_steps
@@ -56,13 +58,13 @@ def test(data_loader, model, prior, device, writer):
 
 def main(args):
     writer = SummaryWriter('./logs/{0}'.format('pixelcnn'))
-    save_filename = './models/{0}/prior.pt'.format('pixelcnn')
+    save_filename = './models/{0}/prior{1}.pt'.format('pixelcnn',DATASET)
 
     batch_size = 32
     image_size = 32
 
     opt = Options().parse()
-    dataset = "NanjingRail_blocks2"
+    dataset = "RailAnormaly_blocks{}".format(DATASET[3:])
     opt.batchsize = batch_size
     opt.isize = image_size
 
@@ -92,7 +94,7 @@ def main(args):
     from vqvae import vqvaemodel
     device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
     model = vqvaemodel.cuda(1)
-    path_vq = './models/vqvae_anomaly.pth'
+    path_vq = './models/vqvae_anomaly{}.pth'.format(DATASET[3:])
     pretrained_data = torch.load(path_vq)
     model.load_state_dict(pretrained_data)
     model.eval()
@@ -119,13 +121,13 @@ def main(args):
                 torch.save(prior.state_dict(), f)
 
 def likelihood_test():
-    save_filename = './models/{0}/prior.pt'.format('pixelcnn')
+    save_filename = './models/{0}/prior{1}.pt'.format('pixelcnn',DATASET)
 
     batch_size = 32
     image_size = 32
 
     opt = Options().parse()
-    dataset = "NanjingRail_blocks2"
+    dataset = "RailAnormaly_blocks{}".format(DATASET[3:])
     opt.batchsize = batch_size
     opt.isize = image_size
     
@@ -136,7 +138,7 @@ def likelihood_test():
 
 
     dataset_test = ImageFolder('./data/{}/test'.format(dataset),transform)
-    test_dataset = DataLoader(dataset=dataset_train,
+    test_dataset = DataLoader(dataset=dataset_test,
                             batch_size=opt.batchsize,
                             shuffle=False,
                             num_workers=int(opt.workers),
@@ -145,7 +147,7 @@ def likelihood_test():
     from vqvae import vqvaemodel
     device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
     model = vqvaemodel.cuda(1)
-    path_vq = './models/vqvae_anomaly.pth'
+    path_vq = './models/vqvae_anomaly{}.pth'.format(DATASET[3:])
     pretrained_data = torch.load(path_vq)
     model.load_state_dict(pretrained_data)
     model.eval()
@@ -159,21 +161,26 @@ def likelihood_test():
     normal_likelihood = []
     abnormal_likelihood = []
     for x, label in test_dataset:
-        
-    #     #print(label)
-    #     label_in = torch.zeros(len(label)).long().cuda() 
-    #     #print(label_in)
-    #     res = model.likelihood(x,label_in)
-    #     normal_res = res[label == 0]
-    #     normal_likelihood.append(normal_res.cpu().detach().numpy())
-    #     abnormal_res = res[label == 1]
-    #     abnormal_likelihood.append(abnormal_res.cpu().detach().numpy())
-    #     #print(res)
-    # print(np.mean(np.hstack(normal_likelihood)))
-    # print(np.mean(np.hstack(abnormal_likelihood)))    
+        images = x.to(device)
+        latents = model(images)['vq_output']['encoding_indices']
+        latents = latents.detach()  
+        res = prior.likelihood(latents,torch.zeros(latents.shape[0]).long().to(device))  
+        print(res)
+        print(label)
+   
+        normal_res = res[label == 0]
+        normal_likelihood.append(normal_res.cpu().detach().numpy())
+        abnormal_res = res[label == 1]
+        abnormal_likelihood.append(abnormal_res.cpu().detach().numpy())
+        #print(res)
+    print("normal likelihood: mean={0:.2f}, max={1:.2f}".format(np.mean(np.hstack(normal_likelihood)),
+                                                            np.max(np.hstack(normal_likelihood))))
+    print("abnormal likelihood: mean={0:.2f}, min={1:.2f}".format(np.mean(np.hstack(abnormal_likelihood)),
+                                                            np.min(np.hstack(abnormal_likelihood)))) 
 
 
 
 if __name__ == '__main__':
 
     main('')
+    likelihood_test()

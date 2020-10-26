@@ -5,6 +5,7 @@ models/*
 !data/sample
 output/
 *.pth
+*.pt
 samples/
 runs
 projector/
@@ -26,4 +27,6 @@ lib/__pycache__/
 options/__pycache__/
 utils/__pycache__/
 
-runs*
+runs*/
+logs/*/
+models_backup/

@@ -10,10 +10,15 @@ from torchvision.datasets import ImageFolder
 import numpy as np
 import matplotlib.pyplot as plt
 
+#!!!!!!!! select correct dataset here!!!!!!!!
+DATASET = 'C0004' #dataset
+
 def main():
 
   writer = SummaryWriter('runs1/vqvae_train')
-  path = './models/vqvae_anomalyx.pth'
+  #path = './models/vqvae_anomaly02.pth'
+  path = './models/vqvae_anomaly{}.pth'.format(DATASET[3:])
+  
 
   device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -22,7 +27,8 @@ def main():
   image_size = 32
 
   opt = Options().parse()
-  dataset = "NanjingRail_blocks2"
+  #dataset = "RailAnormaly_blocks02"
+  dataset = "RailAnormaly_blocks{}".format(DATASET[3:])
   opt.batchsize = batch_size
   opt.isize = image_size
 
@@ -139,7 +145,7 @@ def main():
 
   step_index = 0
   ex = 0
-  for epoch in range(2000):
+  for epoch in range(200):
     for data in train_dataset:
       train_results = train_step(data.cuda(1))
       step_index = step_index + 1
