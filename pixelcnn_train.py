@@ -9,9 +9,11 @@ from torchvision.datasets import ImageFolder
 from pixelcnn import GatedPixelCNN
 from torch.utils.tensorboard import SummaryWriter
 
+import matplotlib.pyplot as plt
+
 global_steps = 0
 #!!!!!!!! select correct dataset here!!!!!!!!
-DATASET = 'C0004'
+DATASET = 'C0007'
 
 def train(data_loader, model, prior, optimizer, device, writer):
     global global_steps
@@ -120,7 +122,7 @@ def main(args):
             with open(save_filename, 'wb') as f:
                 torch.save(prior.state_dict(), f)
 
-def likelihood_test():
+def likelihood_test(DATASET):
     save_filename = './models/{0}/prior{1}.pt'.format('pixelcnn',DATASET)
 
     batch_size = 32
@@ -165,22 +167,27 @@ def likelihood_test():
         latents = model(images)['vq_output']['encoding_indices']
         latents = latents.detach()  
         res = prior.likelihood(latents,torch.zeros(latents.shape[0]).long().to(device))  
-        print(res)
-        print(label)
+        #print(res)
+        #print(label)
    
         normal_res = res[label == 0]
         normal_likelihood.append(normal_res.cpu().detach().numpy())
         abnormal_res = res[label == 1]
         abnormal_likelihood.append(abnormal_res.cpu().detach().numpy())
         #print(res)
-    print("normal likelihood: mean={0:.2f}, max={1:.2f}".format(np.mean(np.hstack(normal_likelihood)),
-                                                            np.max(np.hstack(normal_likelihood))))
-    print("abnormal likelihood: mean={0:.2f}, min={1:.2f}".format(np.mean(np.hstack(abnormal_likelihood)),
-                                                            np.min(np.hstack(abnormal_likelihood)))) 
+    #print("normal likelihood: mean={0:.2f}, max={1:.2f}".format(np.mean(np.hstack(normal_likelihood)),
+    #                                                        np.max(np.hstack(normal_likelihood))))
+    #print("abnormal likelihood: mean={0:.2f}, min={1:.2f}".format(np.mean(np.hstack(abnormal_likelihood)),
+    #                                                        np.min(np.hstack(abnormal_likelihood)))) 
+    normal_likelihood = np.hstack(normal_likelihood)
+    abnormal_likelihood = np.hstack(abnormal_likelihood)
+
+    plt.hist([normal_likelihood,abnormal_likelihood],bins=70,density=True)
+    plt.show()
 
 
 
 if __name__ == '__main__':
 
-    main('')
-    likelihood_test()
+    #main('')
+    likelihood_test('C0005')

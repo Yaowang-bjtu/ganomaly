@@ -199,38 +199,63 @@ class AnomalyDetector():
         rec_fake = self.__reconstruct_image(fake_blocks,int(1920/128),int(1080/128))
         return rec_fake
 
+# if __name__ == '__main__':
+#     path = "./output/ganomaly/NanjingRail_blocks/train/weights/netG.pth"
+#     path_alpha = './models/cifar10_dim_128_lambda_40_zlambd_0_epochs_100.torch'
+#     path_vq = './models/vqvae_anomaly.pth'
+
+#     opt = Options().parse()
+    
+#     gan_network = Ganomaly(opt)
+#     model_ganomaly = AnomalyModel(gan_network, path)
+
+#     from anomaly import model as alpha_model
+#     model_alpha = AnomalyModelAlpha(alpha_model, path_alpha)
+
+#     from vqvae import vqvaemodel
+#     model_vqvae = AnomalyModelVQ(vqvaemodel, path_vq)
+    
+#     detector_ganomaly = AnomalyDetector(model_ganomaly)
+#     detector_alpha = AnomalyDetector(model_alpha)
+#     detector_vqvae = AnomalyDetector(model_vqvae)
+    
+
+
+#     for index in range(21,22):
+#         img = Image.open('./data/test{}.jpg'.format(index))
+#         rec_a = detector_alpha.detect(img)
+#         rec_g = detector_ganomaly.detect(img)
+#         rec_v = detector_vqvae.detect(img)
+#         img_fake_a = Image.fromarray(rec_a)
+#         img_fake_a.save('./data/fake{}_a.png'.format(index))
+#         img_fake_g = Image.fromarray(rec_g)
+#         img_fake_g.save('./data/fake{}_g.png'.format(index))
+#         img_fake_v = Image.fromarray(rec_v)
+#         img_fake_v.save('./data/fake{}_v.png'.format(index))
+    # print(errors)
+
 if __name__ == '__main__':
-    path = "./output/ganomaly/NanjingRail_blocks/train/weights/netG.pth"
-    path_alpha = './models/cifar10_dim_128_lambda_40_zlambd_0_epochs_100.torch'
-    path_vq = './models/vqvae_anomaly.pth'
+    DATASET = 'C0008'
+    path_vq = './models/vqvae_anomaly{}.pth'.format(DATASET[3:])
+    path_pixelcnn = './models/{0}/prior{1}.pt'.format('pixelcnn',DATASET)
+    #output_path = './output/railanomaly_{}'.format(DATASET)
+    input_path = './input/railanomaly_{}'.format(DATASET)
 
     opt = Options().parse()
-    
-    gan_network = Ganomaly(opt)
-    model_ganomaly = AnomalyModel(gan_network, path)
-
-    from anomaly import model as alpha_model
-    model_alpha = AnomalyModelAlpha(alpha_model, path_alpha)
 
     from vqvae import vqvaemodel
     model_vqvae = AnomalyModelVQ(vqvaemodel, path_vq)
-    
-    detector_ganomaly = AnomalyDetector(model_ganomaly)
-    detector_alpha = AnomalyDetector(model_alpha)
     detector_vqvae = AnomalyDetector(model_vqvae)
-    
 
+    test_type = 'abnormal'
+    for num in {1,48,51,100}:
+        tst_img = input_path +'/{1}/{1}_tst_img_{0}.png'.format(num,test_type)
+        rec_img = input_path +'/{1}/{1}_rec_img_{0}.png'.format(num,test_type)
+        img = Image.open(tst_img)
+        rec = detector_vqvae.detect(img)
+        img_rec = Image.fromarray(rec)
+        img_rec.save(rec_img)
+        print(tst_img, rec_img)
+        
 
-    for index in range(21,22):
-        img = Image.open('./data/test{}.jpg'.format(index))
-        rec_a = detector_alpha.detect(img)
-        rec_g = detector_ganomaly.detect(img)
-        rec_v = detector_vqvae.detect(img)
-        img_fake_a = Image.fromarray(rec_a)
-        img_fake_a.save('./data/fake{}_a.png'.format(index))
-        img_fake_g = Image.fromarray(rec_g)
-        img_fake_g.save('./data/fake{}_g.png'.format(index))
-        img_fake_v = Image.fromarray(rec_v)
-        img_fake_v.save('./data/fake{}_v.png'.format(index))
-    # print(errors)
-
+        

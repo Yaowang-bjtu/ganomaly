@@ -16,6 +16,10 @@ __pycache__/
 .idea/
 .ganomaly/
 
+experiments/*
+input/*
+models/
+logs/
 
 
 lib/data/__pycache__/
