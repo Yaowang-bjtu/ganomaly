@@ -12,6 +12,9 @@ import torchvision.utils as vutils
 import torchvision.transforms as transforms
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
+from pixelcnn import GatedPixelCNN
+
+import matplotlib.pyplot as plt
 
 from PIL import Image
 
@@ -89,18 +92,27 @@ class AnomalyModel(GenModel):
 
 class AnomalyModelVQ(GenModel):
     def __init__(self, network, data_path):
-        self.base_model = network
-        pretrained_data = torch.load(data_path)
+        self.base_model = network[0]
+        pretrained_data = torch.load(data_path[0])
         self.base_model.load_state_dict(pretrained_data)
+        self.likelihood_model = network[1]
+        pretrained_data_likelihood = torch.load(data_path[1])
+        self.likelihood_model.load_state_dict(pretrained_data_likelihood)
 
     def __call__(self, dataloader):
         fake_blocks = []
+        recon_errors = []
         with torch.no_grad():
             for data in dataloader:
-                fake = self.base_model(data[0].cuda(1))['x_recon']
+                output = fake = self.base_model(data[0].cuda(1))
+                fake = output['x_recon']
+                latents = output['vq_output']['encoding_indices']
+                latents = latents.detach() 
+                potential = self.likelihood_model.likelihood(latents,torch.zeros(latents.shape[0]).long().cuda(1)) 
                 fake_blocks.append(fake)
+                recon_errors.append(potential)
 
-        return fake_blocks 
+        return fake_blocks, recon_errors 
 
     def get_input_size(self):
         return (32, 32)
@@ -124,7 +136,7 @@ class AnomalyDetector():
     
 
     class DatasetFromImage(Dataset):
-        def __init__(self, img, block=True,block_size =(128,128), transformer=None):
+        def __init__(self, img, block=True, block_size =(128,128), transformer=None):
             self.transformer = transformer
             if block:
                 self.blocks = self.__crop_image(img,block_size, block_size)
@@ -177,6 +189,16 @@ class AnomalyDetector():
         #rec_img = np.add(rec_img,0.5)
         return rec_img
 
+    def __reconstruct_likelihood(self,batches,xblocks,yblocks):
+        lists = []
+        for batch in batches:
+            lists.append(batch.cpu().detach().numpy())
+        lists = np.hstack(lists)
+        lists = lists[0:xblocks*yblocks]
+        lists = lists.reshape(yblocks,xblocks)
+        return lists
+
+
     def __normalization(self,tensor_list):
         normalized_list = []
         for tensor in tensor_list:
@@ -192,12 +214,22 @@ class AnomalyDetector():
             normalized_list.append(tensor)
         return normalized_list
 
+    def resize_input(self, image):
+        batches=[]
+        data_loader = self.__preprocess(image)
+        for batch in data_loader:
+            batches.append(batch[0])
+        batches = self.__normalization(batches)
+        resized = self.__reconstruct_image(batches, int(1920/128),int(1080/128))
+        return resized
+
     def detect(self, image):
         data_loader = self.__preprocess(image)
-        fake_blocks = self.model(data_loader)
+        fake_blocks,recon_errors = self.model(data_loader)
         fake_blocks = self.__normalization(fake_blocks)
         rec_fake = self.__reconstruct_image(fake_blocks,int(1920/128),int(1080/128))
-        return rec_fake
+        rec_likelihood = self.__reconstruct_likelihood(recon_errors,int(1920/128),int(1080/128))
+        return rec_fake,rec_likelihood
 
 # if __name__ == '__main__':
 #     path = "./output/ganomaly/NanjingRail_blocks/train/weights/netG.pth"
@@ -234,8 +266,11 @@ class AnomalyDetector():
 #         img_fake_v.save('./data/fake{}_v.png'.format(index))
     # print(errors)
 
+
+
+
 if __name__ == '__main__':
-    DATASET = 'C0008'
+    DATASET = 'C0006'
     path_vq = './models/vqvae_anomaly{}.pth'.format(DATASET[3:])
     path_pixelcnn = './models/{0}/prior{1}.pt'.format('pixelcnn',DATASET)
     #output_path = './output/railanomaly_{}'.format(DATASET)
@@ -244,18 +279,50 @@ if __name__ == '__main__':
     opt = Options().parse()
 
     from vqvae import vqvaemodel
-    model_vqvae = AnomalyModelVQ(vqvaemodel, path_vq)
+    likelihood = GatedPixelCNN(512, 64,
+        15, n_classes=1).cuda(1)
+    model_vqvae = AnomalyModelVQ((vqvaemodel,likelihood), (path_vq,path_pixelcnn))
     detector_vqvae = AnomalyDetector(model_vqvae)
 
     test_type = 'abnormal'
-    for num in {1,48,51,100}:
+    for num in {3,114,424}:
         tst_img = input_path +'/{1}/{1}_tst_img_{0}.png'.format(num,test_type)
         rec_img = input_path +'/{1}/{1}_rec_img_{0}.png'.format(num,test_type)
         img = Image.open(tst_img)
-        rec = detector_vqvae.detect(img)
-        img_rec = Image.fromarray(rec)
-        img_rec.save(rec_img)
-        print(tst_img, rec_img)
+        rec, error = detector_vqvae.detect(img)
+        #img_rec = Image.fromarray(rec)
+        #img_rec.save(rec_img)
+        #print(tst_img, rec_img)
+        print(error)
+        resized = detector_vqvae.resize_input(img)
+
+
+        # import pickle
+        # pickle.dump(error,open('errors.pkl','wb'))
+
+        plt.imshow(img)
+        current_axis = plt.gca()
+
+        from utility import *
+
+        locations = abnormal_from_error(error)
+
+        print(locations)
+        
+        add_frame(locations, current_axis)
+        # resized_img = Image.fromarray(resized)
+        # #resized_img.save('./resize_test.png')
+        # diff = np.abs(rec[:,:,0].astype(float)-resized[:,:,0].astype(float))
+        # #img_diff = Image.fromarray(diff)
+        # #img_diff.save('./diff.png')
+        # plt.subplot(1,3,1)
+        # plt.imshow(resized_img)
+        # plt.subplot(1,3,2)
+        # plt.imshow(img_rec)
+        # plt.subplot(1,3,3)
+        # plt.imshow(diff)
+
+        plt.show()
         
 
         
