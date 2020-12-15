@@ -17,6 +17,8 @@ from pixelcnn import GatedPixelCNN
 import matplotlib.pyplot as plt
 
 from PIL import Image
+from utility import *
+import os
 
 
 class GenModel():
@@ -124,10 +126,14 @@ class AnomalyDetector():
 
     def __init__(self,model, 
                 blocks = True,
-                block_size = (128,128)):
+                block_size = (128,128),
+                image_size = (1920,1080)):
         self.model = model
         self.blocks = blocks
         self.block_size = block_size
+        self.image_size = image_size
+        self.x_num_blocks = int(self.image_size[0]/self.block_size[0])
+        self.y_num_blocks = int(self.image_size[1]/self.block_size[1])
 
         self.transformer = transforms.Compose([transforms.Scale(self.model.get_input_size()),
                                         transforms.CenterCrop(self.model.get_input_size()),
@@ -268,9 +274,92 @@ class AnomalyDetector():
 
 
 
+def read_test_images(channel):
+    data_path = '/home/omnisky/Documents/Research/datasets/RailAnomaly/RailAnomaly/C{0:04d}/test/'.format(channel)
+    # if os.path.exists(data_path + '0.normal'):
+    #     print(True)
 
-if __name__ == '__main__':
-    DATASET = 'C0006'
+    path = data_path + '0.normal'
+    normal_imgs = [os.path.join(path,img) for img in os.listdir(path) if os.path.isfile(os.path.join(path,img))] 
+
+    path = data_path + '1.abnormal'
+    abnormal_imgs = [os.path.join(path,img) for img in os.listdir(path) if os.path.isfile(os.path.join(path,img))] 
+
+    # normal_imgs = []
+    # abnormal_imgs = []
+
+    return normal_imgs, abnormal_imgs 
+
+def evaluate(channel,show=True):
+    normal_imgs, abnormal_imgs = read_test_images(channel)
+
+    DATASET = 'C{0:04d}'.format(channel)
+    path_vq = './models/vqvae_anomaly{}.pth'.format(DATASET[3:])
+    path_pixelcnn = './models/{0}/prior{1}.pt'.format('pixelcnn',DATASET)
+    
+    opt = Options().parse()
+
+    from vqvae import vqvaemodel
+    likelihood = GatedPixelCNN(512, 64,
+        15, n_classes=1).cuda(1)
+    model_vqvae = AnomalyModelVQ((vqvaemodel,likelihood), (path_vq,path_pixelcnn))
+    detector_vqvae = AnomalyDetector(model_vqvae)
+
+    # normal image test
+    nor_correct = []
+    nor_incorrect = []
+    count = 0
+    for img_name in normal_imgs:
+        count += 1
+        
+        img = Image.open(img_name)
+        rec, error = detector_vqvae.detect(img)
+        locations = abnormal_from_error(error)
+        if locations.size == 0:
+            nor_correct.append(img_name)
+            if show:
+                print('C{0:04d} normal, {1}/{2}, correct'.format(channel,count,len(normal_imgs)))
+        else:
+            nor_incorrect.append(img_name)
+            if show:
+                print('C{0:04d} normal, {1}/{2}, incorrect'.format(channel,count,len(normal_imgs)))
+
+    # abnormal image test
+    ab_correct = []
+    ab_incorrect = []
+    count = 0
+    for img_name in abnormal_imgs:
+        count += 1
+        
+        img = Image.open(img_name)
+        rec, error = detector_vqvae.detect(img)
+        locations = abnormal_from_error(error)
+        if locations.size == 0:
+            ab_incorrect.append(img_name)
+            if show:
+                print('C{0:04d} abnormal, {1}/{2}, incorrect'.format(channel,count,len(abnormal_imgs)))
+        else:
+            ab_correct.append(img_name)
+            if show:
+                print('C{0:04d} abnormal, {1}/{2}, correct'.format(channel,count,len(abnormal_imgs)))
+
+    nor_correct_rate = len(nor_correct)/len(normal_imgs)
+    ab_correct_rate = len(ab_correct)/len(abnormal_imgs)
+
+    print('channel = C{0:04d}, normal correct rate = {1}, abnormal correct rate = {2}'.format(channel,nor_correct_rate,ab_correct_rate))
+
+    return None
+
+def test():
+    pass
+
+
+def main(channel, test_type, show=True ,show_img = False):
+
+    normal_imgs, abnormal_imgs = read_test_images(channel)
+
+    DATASET = 'C{0:04d}'.format(channel)
+    #DATASET = 'C0006'
     path_vq = './models/vqvae_anomaly{}.pth'.format(DATASET[3:])
     path_pixelcnn = './models/{0}/prior{1}.pt'.format('pixelcnn',DATASET)
     #output_path = './output/railanomaly_{}'.format(DATASET)
@@ -284,32 +373,118 @@ if __name__ == '__main__':
     model_vqvae = AnomalyModelVQ((vqvaemodel,likelihood), (path_vq,path_pixelcnn))
     detector_vqvae = AnomalyDetector(model_vqvae)
 
-    test_type = 'abnormal'
-    for num in {3,114,424}:
-        tst_img = input_path +'/{1}/{1}_tst_img_{0}.png'.format(num,test_type)
-        rec_img = input_path +'/{1}/{1}_rec_img_{0}.png'.format(num,test_type)
-        img = Image.open(tst_img)
-        rec, error = detector_vqvae.detect(img)
-        #img_rec = Image.fromarray(rec)
-        #img_rec.save(rec_img)
-        #print(tst_img, rec_img)
-        print(error)
-        resized = detector_vqvae.resize_input(img)
+    # -------------------------------全部图像测试-------------------------------------------
+    nor_correct = []
+    nor_incorrect = []
+    count = 0
+
+    if test_type == 'normal' or test_type == 'both':
+        for img_name in normal_imgs:
+            count += 1
+            
+            img = Image.open(img_name)
+            rec, error = detector_vqvae.detect(img)
+            resized = detector_vqvae.resize_input(img)
+            is_abnormal, diff = abnormal_from_reconstruction(resized,rec)
+            #locations = abnormal_from_error(rec_error,ratio = 3, absmax = 200)
+            if not is_abnormal:
+                nor_correct.append(img_name)
+                if show:
+                    print('C{0:04d} normal, {1}/{2}, correct'.format(channel,count,len(normal_imgs)))
+            else:
+                nor_incorrect.append(img_name)
+                if show:
+                    print('C{0:04d} normal, {1}/{2}, incorrect'.format(channel,count,len(normal_imgs)))
+                    if show_img:
+                        plt.subplot(1,2,1)
+                        plt.imshow(img)
+                        plt.subplot(1,2,2)
+                        plt.imshow(diff)
+                        plt.show()
 
 
+    # abnormal image test
+    ab_correct = []
+    ab_incorrect = []
+    count = 0
+
+    if test_type == 'abnormal' or test_type == 'both':
+        for img_name in abnormal_imgs:
+            count += 1
+            
+            img = Image.open(img_name)
+            rec, error = detector_vqvae.detect(img)
+            resized = detector_vqvae.resize_input(img)
+            is_abnormal, diff = abnormal_from_reconstruction(resized,rec)
+            #locations = abnormal_from_error(rec_error,ratio = 3, absmax = 200)
+            if not is_abnormal:
+                ab_incorrect.append(img_name)
+                if show:
+                    print('C{0:04d} abnormal, {1}/{2}, incorrect'.format(channel,count,len(abnormal_imgs)))
+                    if show_img:
+                        plt.subplot(1,2,1)
+                        plt.imshow(img)
+                        plt.subplot(1,2,2)
+                        plt.imshow(diff)
+                        plt.show()
+            else:
+                ab_correct.append(img_name)
+                if show:
+                    print('C{0:04d} abnormal, {1}/{2}, correct'.format(channel,count,len(abnormal_imgs)))
+
+
+    nor_correct_rate = len(nor_correct)/len(normal_imgs)
+    ab_correct_rate = len(ab_correct)/len(abnormal_imgs)
+
+    overall_res = 'channel = C{0:04d}, normal correct rate = {1}, abnormal correct rate = {2}'.format(channel,nor_correct_rate,ab_correct_rate)
+    print(overall_res)
+
+    save_test_result('./test_result_open5.txt',overall_res,nor_incorrect,ab_incorrect)
+
+
+    # -------------------------------部分图像测试-----------------------------------------
+    # from testimage import testimages
+    # # test_type = 'abnormal'
+    # for num in testimages[DATASET][test_type]:
+    #     tst_img = input_path +'/{1}/{1}_tst_img_{0}.png'.format(num,test_type)
+    #     rec_img = input_path +'/{1}/{1}_rec_img_{0}.png'.format(num,test_type)
+    #     img = Image.open(tst_img)
+    #     rec, error = detector_vqvae.detect(img)
+    #     #img_rec = Image.fromarray(rec)
+    #     #img_rec.save(rec_img)
+    #     #print(tst_img, rec_img)
+    #     #print(error)
+    #     resized = detector_vqvae.resize_input(img)
+    #     is_abnormal,diff1 = abnormal_from_reconstruction(resized,rec)
+    #     if is_abnormal:
+    #         str_result = 'abnormal'
+    #     else:
+    #         str_result = 'normal'
+    #     print('Input: {}, Result: {}'.format(test_type, str_result))
+        # locations = abnormal_from_error(rec_error,ratio = 3, absmax = 150)
+        
         # import pickle
         # pickle.dump(error,open('errors.pkl','wb'))
+        # diff = np.abs(rec[:,:,0].astype(float)-resized[:,:,0].astype(float))
+        # plt.imshow(rec_error)
+        # current_axis = plt.gca()   
+        # add_frame(locations, current_axis,32,32)    
 
-        plt.imshow(img)
-        current_axis = plt.gca()
+        # plt.figure()
+        # plt.imshow(diff1)
+        # current_axis = plt.gca()
+        # # locations = abnormal_from_error(error)
 
-        from utility import *
-
-        locations = abnormal_from_error(error)
-
-        print(locations)
+        # print(locations)
         
-        add_frame(locations, current_axis)
+        # add_frame(locations, current_axis,32,32)
+
+        # plt.figure()
+        # plt.imshow(img)
+        # current_axis = plt.gca()
+        # locations = abnormal_from_error(error)
+        
+        # add_frame(locations, current_axis)
         # resized_img = Image.fromarray(resized)
         # #resized_img.save('./resize_test.png')
         # diff = np.abs(rec[:,:,0].astype(float)-resized[:,:,0].astype(float))
@@ -322,7 +497,16 @@ if __name__ == '__main__':
         # plt.subplot(1,3,3)
         # plt.imshow(diff)
 
-        plt.show()
+        # plt.show()
+    #     if locations.size == 0:
+    #         incorrect.append(tst_img)
+    #     else:
+    #         correct.append(tst_img)
         
+    # print(correct,incorrect)
 
-        
+
+if __name__ == '__main__':
+    # for ch in range(1,9):
+    main(6, 'both', show_img=False)
+    # evaluate(8,show=True)        
