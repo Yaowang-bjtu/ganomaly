@@ -13,7 +13,7 @@ TRAIN GANOMALY only
 """
 
 
-##
+##train gnomaly
 # LIBRARIES
 from __future__ import print_function
 
@@ -25,10 +25,14 @@ from lib.model import Ganomaly
 # def main():
 """ Training
 """
-
+dataset = "RailAnormaly_blocks01"
 ##
 # ARGUMENTS
+#opt = Options().parse()
 opt = Options().parse()
+
+
+
 
 ##
 # LOAD DATA
@@ -41,6 +45,8 @@ model = Ganomaly(opt, dataloader)
 ##
 # TRAIN MODEL
 model.train()
+
+#model.test()
 
 # if __name__ == '__main__':
 #     main()

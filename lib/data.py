@@ -75,7 +75,7 @@ def load_data(opt):
         opt.anomaly_class = int(opt.anomaly_class)
 
         splits = ['train', 'test']
-        drop_last_batch = {'train': True, 'test': False}
+        drop_last_batch = {'train': True, 'test': True}
         shuffle = {'train': True, 'test': True}
 
         transform = transforms.Compose(
@@ -144,7 +144,7 @@ def load_data(opt):
 
     else:
         splits = ['train', 'test']
-        drop_last_batch = {'train': True, 'test': False}
+        drop_last_batch = {'train': True, 'test': True}
         shuffle = {'train': True, 'test': False}
         transform = transforms.Compose([transforms.Scale(opt.isize),
                                         transforms.CenterCrop(opt.isize),

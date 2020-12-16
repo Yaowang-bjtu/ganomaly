@@ -56,7 +56,7 @@ class AnomalyModelAlpha(GenModel):
                 fake = self.base_model(data[0], mode = 'reconstruct')
                 fake_batches.append(fake)
             
-        return fake_batches
+        return fake_batches,None
 
     def get_input_size(self):
         return (32, 32)
@@ -83,7 +83,7 @@ class AnomalyModel(GenModel):
                 fake, _, _ = self.base_model.netg(self.base_model.input)
                 fake_blocks.append(fake)
 
-        return fake_blocks
+        return fake_blocks,None
 
     def get_input_size(self):
         s = self.base_model.opt.isize
@@ -196,6 +196,9 @@ class AnomalyDetector():
         return rec_img
 
     def __reconstruct_likelihood(self,batches,xblocks,yblocks):
+        if batches == None:
+            return None
+        
         lists = []
         for batch in batches:
             lists.append(batch.cpu().detach().numpy())
@@ -236,42 +239,6 @@ class AnomalyDetector():
         rec_fake = self.__reconstruct_image(fake_blocks,int(1920/128),int(1080/128))
         rec_likelihood = self.__reconstruct_likelihood(recon_errors,int(1920/128),int(1080/128))
         return rec_fake,rec_likelihood
-
-# if __name__ == '__main__':
-#     path = "./output/ganomaly/NanjingRail_blocks/train/weights/netG.pth"
-#     path_alpha = './models/cifar10_dim_128_lambda_40_zlambd_0_epochs_100.torch'
-#     path_vq = './models/vqvae_anomaly.pth'
-
-#     opt = Options().parse()
-    
-#     gan_network = Ganomaly(opt)
-#     model_ganomaly = AnomalyModel(gan_network, path)
-
-#     from anomaly import model as alpha_model
-#     model_alpha = AnomalyModelAlpha(alpha_model, path_alpha)
-
-#     from vqvae import vqvaemodel
-#     model_vqvae = AnomalyModelVQ(vqvaemodel, path_vq)
-    
-#     detector_ganomaly = AnomalyDetector(model_ganomaly)
-#     detector_alpha = AnomalyDetector(model_alpha)
-#     detector_vqvae = AnomalyDetector(model_vqvae)
-    
-
-
-#     for index in range(21,22):
-#         img = Image.open('./data/test{}.jpg'.format(index))
-#         rec_a = detector_alpha.detect(img)
-#         rec_g = detector_ganomaly.detect(img)
-#         rec_v = detector_vqvae.detect(img)
-#         img_fake_a = Image.fromarray(rec_a)
-#         img_fake_a.save('./data/fake{}_a.png'.format(index))
-#         img_fake_g = Image.fromarray(rec_g)
-#         img_fake_g.save('./data/fake{}_g.png'.format(index))
-#         img_fake_v = Image.fromarray(rec_v)
-#         img_fake_v.save('./data/fake{}_v.png'.format(index))
-    # print(errors)
-
 
 
 def read_test_images(channel):
@@ -351,6 +318,41 @@ def evaluate(channel,show=True):
     return None
 
 def test():
+    path = "./output/ganomaly/NanjingRail_blocks/train/weights/netG.pth"
+    path_alpha = './models/cifar10_dim_128_lambda_40_zlambd_0_epochs_100.torch'
+    path_vq = './models/vqvae_anomaly.pth'
+    path_pixelcnn = './models/{0}/prior{1}.pt'.format('pixelcnn','C0008')
+
+    opt = Options().parse()
+    
+    gan_network = Ganomaly(opt)
+    model_ganomaly = AnomalyModel(gan_network, path)
+
+    from anomaly import model as alpha_model
+    model_alpha = AnomalyModelAlpha(alpha_model, path_alpha)
+
+    from vqvae import vqvaemodel
+    likelihood = GatedPixelCNN(512, 64,
+        15, n_classes=1).cuda(1)
+    model_vqvae = AnomalyModelVQ((vqvaemodel,likelihood), (path_vq,path_pixelcnn))
+    
+    detector_ganomaly = AnomalyDetector(model_ganomaly)
+    detector_alpha = AnomalyDetector(model_alpha)
+    detector_vqvae = AnomalyDetector(model_vqvae)
+    
+
+
+    for index in range(21,22):
+        img = Image.open('./data/test{}.jpg'.format(index))
+        rec_a = detector_alpha.detect(img)
+        rec_g,_ = detector_ganomaly.detect(img)
+        rec_v,_ = detector_vqvae.detect(img)
+        #img_fake_a = Image.fromarray(rec_a)
+        #img_fake_a.save('./data/fake{}_a.png'.format(index))
+        img_fake_g = Image.fromarray(rec_g)
+        img_fake_g.save('./data/fake{}_g.png'.format(index))
+        img_fake_v = Image.fromarray(rec_v)
+        img_fake_v.save('./data/fake{}_v.png'.format(index))
     pass
 
 
@@ -507,6 +509,8 @@ def main(channel, test_type, show=True ,show_img = False):
 
 
 if __name__ == '__main__':
+    test()
+    pass
     # for ch in range(1,9):
-    main(6, 'both', show_img=False)
+    #main(6, 'both', show_img=False)
     # evaluate(8,show=True)        
