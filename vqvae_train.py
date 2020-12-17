@@ -9,12 +9,12 @@ import torchvision.transforms as transforms
 from torchvision.datasets import ImageFolder
 import numpy as np
 import matplotlib.pyplot as plt
+from sklearn import metrics
 
-#!!!!!!!! select correct dataset here!!!!!!!!
-DATASET = 'C0003' #dataset
 
-def main():
 
+def main(dataset):
+  DATASET = dataset
   writer = SummaryWriter('runs1/vqvae_train')
   #path = './models/vqvae_anomaly02.pth'
   path = './models/vqvae_anomaly{}.pth'.format(DATASET[3:])
@@ -231,5 +231,85 @@ def main():
 
   plt.show()
 
+def test(dataset):
+  '''
+  test performence
+  '''
+  DATASET =dataset
+  path = './models/vqvae_anomaly{}.pth'.format(DATASET[3:])
+  
+
+  device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+  # Set hyper-parameters.
+  batch_size = 32
+  image_size = 32
+
+  opt = Options().parse()
+  #dataset = "RailAnormaly_blocks02"
+  dataset = "RailAnormaly_blocks{}".format(DATASET[3:])
+  opt.batchsize = batch_size
+  opt.isize = image_size
+
+  transform = transforms.Compose([transforms.Scale(opt.isize),
+                                            transforms.CenterCrop(opt.isize),
+                                            transforms.ToTensor(),
+                                            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)), ])
+
+
+  dataset_test = ImageFolder('./data/{}/test'.format(dataset),transform)
+  test_dataset = DataLoader(dataset=dataset_test,
+                            batch_size=opt.batchsize,
+                            shuffle=False,
+                            num_workers=int(opt.workers),
+                            drop_last=True)  
+
+  from vqvae import vqvaemodel
+  device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+  model = vqvaemodel.cuda(1)
+  pretrained_data = torch.load(path)
+  model.load_state_dict(pretrained_data)
+  model.eval()
+  
+  normal_likelihood = []
+  abnormal_likelihood = []
+  for x, label in test_dataset:
+    images = x.to(device)
+    recon = model(images)['x_recon']
+    res = torch.zeros(batch_size).to(device)
+    for i in range(batch_size):
+      res[i]=torch.mean((images[i] - recon[i])**2)
+
+    normal_res = res[label == 0]
+    normal_likelihood.append(normal_res.cpu().detach().numpy())
+    abnormal_res = res[label == 1]
+    abnormal_likelihood.append(abnormal_res.cpu().detach().numpy())
+    #print(res)
+  #print("normal likelihood: mean={0:.2f}, max={1:.2f}".format(np.mean(np.hstack(normal_likelihood)),
+  #                                                        np.max(np.hstack(normal_likelihood))))
+  #print("abnormal likelihood: mean={0:.2f}, min={1:.2f}".format(np.mean(np.hstack(abnormal_likelihood)),
+  #                                                        np.min(np.hstack(abnormal_likelihood)))) 
+  normal_likelihood = np.hstack(normal_likelihood)
+  normal_label = np.zeros(normal_likelihood.size)
+  abnormal_likelihood = np.hstack(abnormal_likelihood)
+  abnormal_label = np.ones(abnormal_likelihood.size)
+
+  y = np.hstack([normal_label,abnormal_label])
+  scorce = np.hstack([normal_likelihood,abnormal_likelihood])
+
+  fpr, tpr, _ = metrics.roc_curve(y, scorce)
+  AUC = metrics.auc(fpr, tpr)
+  print(AUC)
+  plt.hist([normal_likelihood,abnormal_likelihood],bins=70,density=True)
+  plt.figure()
+  plt.plot(fpr,tpr)
+  plt.show()
+
+
+
 if __name__ == '__main__':
-  main()
+
+  #!!!!!!!! select correct dataset here!!!!!!!!
+  DATASET = 'C0008' #dataset
+  #main()
+  test(DATASET)

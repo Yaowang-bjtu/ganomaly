@@ -8,6 +8,7 @@ import torchvision.transforms as transforms
 from torchvision.datasets import ImageFolder
 from pixelcnn import GatedPixelCNN
 from torch.utils.tensorboard import SummaryWriter
+from sklearn import metrics
 
 import matplotlib.pyplot as plt
 
@@ -180,9 +181,20 @@ def likelihood_test(DATASET):
     #print("abnormal likelihood: mean={0:.2f}, min={1:.2f}".format(np.mean(np.hstack(abnormal_likelihood)),
     #                                                        np.min(np.hstack(abnormal_likelihood)))) 
     normal_likelihood = np.hstack(normal_likelihood)
+    normal_label = np.zeros(normal_likelihood.size)
     abnormal_likelihood = np.hstack(abnormal_likelihood)
+    abnormal_label = np.ones(abnormal_likelihood.size)
+
+    y = np.hstack([normal_label,abnormal_label])
+    scorce = np.hstack([normal_likelihood,abnormal_likelihood])
+
+    fpr, tpr, _ = metrics.roc_curve(y, scorce)
+    AUC = metrics.auc(fpr, tpr)
+    print(AUC)
 
     plt.hist([normal_likelihood,abnormal_likelihood],bins=70,density=True)
+    plt.figure()
+    plt.plot(fpr,tpr)
     plt.show()
 
 
@@ -190,4 +202,4 @@ def likelihood_test(DATASET):
 if __name__ == '__main__':
 
     #main('')
-    likelihood_test('C0005')
+    likelihood_test('C0007')
