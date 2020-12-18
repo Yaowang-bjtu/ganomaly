@@ -509,8 +509,8 @@ def main(channel, test_type, show=True ,show_img = False):
 
 
 if __name__ == '__main__':
-    test()
+    #test()
     pass
     # for ch in range(1,9):
-    #main(6, 'both', show_img=False)
+    main(6, 'normal', show_img=False)
     # evaluate(8,show=True)        

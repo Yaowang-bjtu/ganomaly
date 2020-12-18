@@ -7,17 +7,20 @@ from torchvision.utils import save_image
 import time
 from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader
+from sklearn import metrics
 
+import matplotlib.pyplot as plt
 
-RUN = 'test' #| "train"
+#RUN = 'test' #| "train"
+
 
 BATCH_SIZE = 32
-N_EPOCHS = 1000
-PRINT_INTERVAL = 10
-ALWAYS_SAVE = True
+N_EPOCHS = 10
+PRINT_INTERVAL = 100
+ALWAYS_SAVE = False
 DATASET = 'RAIL'  # CIFAR10 | MNIST | FashionMNIST
 #DATASET = 'FashionMNIST'  # CIFAR10 | MNIST | FashionMNIST
-dataset_name = "NanjingRail_blocks2"
+
 NUM_WORKERS = 4
 
 IMAGE_SHAPE = (32, 32)  # (32, 32) | (28, 28)
@@ -28,50 +31,12 @@ N_LAYERS = 15
 LR = 3e-4
 
 
-if DATASET == "RAIL":
-    transform = transforms.Compose([transforms.Scale(IMAGE_SHAPE[0]),
-                                            transforms.CenterCrop(IMAGE_SHAPE[0]),
-                                            transforms.ToTensor(), ])
-
-    dataset_train = ImageFolder('./data/{}/train'.format(dataset_name),transform)
-    #dataset_train = torch.stack(list(zip(*dataset_train))[0])
-    dataset_test = ImageFolder('./data/{}/test'.format(dataset_name),transform)
-    #dataset_test = torch.stack(list(zip(*dataset_test))[0])
-
-    train_loader = DataLoader(dataset=dataset_train,
-                            batch_size=BATCH_SIZE,
-                            shuffle=True,
-                            num_workers=int(NUM_WORKERS),
-                            drop_last=False)
-    
-    test_loader = DataLoader(dataset=dataset_test,
-                            batch_size=BATCH_SIZE,
-                            shuffle=False,
-                            num_workers=int(NUM_WORKERS),
-                            drop_last=False)
-
-else:
-    train_loader = torch.utils.data.DataLoader(
-        eval('datasets.'+DATASET)(
-            '../data/{}/'.format(DATASET), train=True, download=True,
-            transform=transforms.ToTensor(),
-        ), batch_size=BATCH_SIZE, shuffle=False,
-        num_workers=NUM_WORKERS, pin_memory=True
-    )
-    test_loader = torch.utils.data.DataLoader(
-        eval('datasets.'+DATASET)(
-            '../data/{}/'.format(DATASET), train=False,
-            transform=transforms.ToTensor(),
-        ), batch_size=BATCH_SIZE, shuffle=False,
-        num_workers=NUM_WORKERS, pin_memory=True
-    )
-
 model = GatedPixelCNN(K, DIM, N_LAYERS,n_classes=1).cuda()
 criterion = nn.CrossEntropyLoss().cuda()
 opt = torch.optim.Adam(model.parameters(), lr=LR)
 
 
-def train():
+def train(train_loader):
     train_loss = []
     for batch_idx, (x, label) in enumerate(train_loader):
         start_time = time.time()
@@ -102,7 +67,7 @@ def train():
             ))
 
 
-def test():
+def test(test_loader):
     start_time = time.time()
     val_loss = []
     with torch.no_grad():
@@ -140,44 +105,113 @@ def generate_samples():
     )
 
 
-if RUN == 'test':
-    model.load_state_dict(torch.load('models/{}_pixelcnn.pt'.format(DATASET)))
-    #generate_samples()
-    #(x,label) = list(test_loader)[-3]
-    normal_likelihood = []
-    abnormal_likelihood = []
-    for x, label in test_loader:
-        x = (x[:, 0] * (K-1)).long().cuda()
-        #print(label)
-        label_in = torch.zeros(len(label)).long().cuda() 
-        #print(label_in)
-        res = model.likelihood(x,label_in)
-        normal_res = res[label == 0]
-        normal_likelihood.append(normal_res.cpu().detach().numpy())
-        abnormal_res = res[label == 1]
-        abnormal_likelihood.append(abnormal_res.cpu().detach().numpy())
-        #print(res)
-    print(np.mean(np.hstack(normal_likelihood)))
-    print(np.mean(np.hstack(abnormal_likelihood)))
 
-    # for res in normal_likelihood:
-    #     res_np = res.cpu().detach().numpy()
 
-else:
-    BEST_LOSS = 999
-    LAST_SAVED = -1
-    for epoch in range(1, N_EPOCHS):
-        print("\nEpoch {}:".format(epoch))
-        train()
-        cur_loss = test()
+def main(ch, RUN = 'train'):
 
-        if ALWAYS_SAVE or cur_loss <= BEST_LOSS:
-            BEST_LOSS = cur_loss
-            LAST_SAVED = epoch
+    # dataset_name = "NanjingRail_blocks1"
+    dataset_name = "RailAnormaly_blocks{:02d}".format(ch)
+    if DATASET == "RAIL":
+        transform = transforms.Compose([transforms.Scale(IMAGE_SHAPE[0]),
+                                                transforms.CenterCrop(IMAGE_SHAPE[0]),
+                                                transforms.ToTensor(), ])
 
-            print("Saving model!")
-            torch.save(model.state_dict(), 'models/{}_pixelcnn.pt'.format(DATASET))
-        else:
-            print("Not saving model! Last saved: {}".format(LAST_SAVED))
+        dataset_train = ImageFolder('./data/{}/train'.format(dataset_name),transform)
+        #dataset_train = torch.stack(list(zip(*dataset_train))[0])
+        dataset_test = ImageFolder('./data/{}/test'.format(dataset_name),transform)
+        #dataset_test = torch.stack(list(zip(*dataset_test))[0])
 
-        generate_samples()
+        train_loader = DataLoader(dataset=dataset_train,
+                                batch_size=BATCH_SIZE,
+                                shuffle=True,
+                                num_workers=int(NUM_WORKERS),
+                                drop_last=False)
+        
+        test_loader = DataLoader(dataset=dataset_test,
+                                batch_size=BATCH_SIZE,
+                                shuffle=False,
+                                num_workers=int(NUM_WORKERS),
+                                drop_last=False)
+
+    else:
+        train_loader = torch.utils.data.DataLoader(
+            eval('datasets.'+DATASET)(
+                '../data/{}/'.format(DATASET), train=True, download=True,
+                transform=transforms.ToTensor(),
+            ), batch_size=BATCH_SIZE, shuffle=False,
+            num_workers=NUM_WORKERS, pin_memory=True
+        )
+        test_loader = torch.utils.data.DataLoader(
+            eval('datasets.'+DATASET)(
+                '../data/{}/'.format(DATASET), train=False,
+                transform=transforms.ToTensor(),
+            ), batch_size=BATCH_SIZE, shuffle=False,
+            num_workers=NUM_WORKERS, pin_memory=True
+        )
+
+    if RUN == 'test':
+        model.load_state_dict(torch.load('models/{}_pixelcnnBase.pt'.format(dataset_name)))
+        #generate_samples()
+        #(x,label) = list(test_loader)[-3]
+        normal_likelihood = []
+        abnormal_likelihood = []
+        for x, label in test_loader:
+            x = (x[:, 0] * (K-1)).long().cuda()
+            #print(label)
+            label_in = torch.zeros(len(label)).long().cuda() 
+            #print(label_in)
+            res = model.likelihood(x,label_in)
+            normal_res = res[label == 0]
+            normal_likelihood.append(normal_res.cpu().detach().numpy())
+            abnormal_res = res[label == 1]
+            abnormal_likelihood.append(abnormal_res.cpu().detach().numpy())
+            #print(res)
+        #print(np.mean(np.hstack(normal_likelihood)))
+        #print(np.mean(np.hstack(abnormal_likelihood)))
+
+        normal_likelihood = np.hstack(normal_likelihood)
+        normal_label = np.zeros(normal_likelihood.size)
+        abnormal_likelihood = np.hstack(abnormal_likelihood)
+        abnormal_label = np.ones(abnormal_likelihood.size)
+
+        y = np.hstack([normal_label,abnormal_label])
+        scorce = np.hstack([normal_likelihood,abnormal_likelihood])
+
+        fpr, tpr, _ = metrics.roc_curve(y, scorce)
+        AUC = metrics.auc(fpr, tpr)
+        print('C000{}: AUC = {}'.format(ch,AUC))
+
+        # plt.hist([normal_likelihood,abnormal_likelihood],bins=70,density=True)
+        # plt.figure()
+        # plt.plot(fpr,tpr)
+        # plt.show()
+
+        # for res in normal_likelihood:
+        #     res_np = res.cpu().detach().numpy()
+
+    else:
+        BEST_LOSS = 999
+        LAST_SAVED = -1
+        for epoch in range(1, N_EPOCHS):
+            print("\nEpoch {}:".format(epoch))
+            train(train_loader)
+            cur_loss = test(test_loader)
+
+            if ALWAYS_SAVE or cur_loss <= BEST_LOSS:
+                BEST_LOSS = cur_loss
+                LAST_SAVED = epoch
+
+                print("Saving model!")
+                torch.save(model.state_dict(), 'models/{}_pixelcnnBase.pt'.format(dataset_name))
+            else:
+                print("Not saving model! Last saved: {}".format(LAST_SAVED))
+
+            #generate_samples()
+
+
+if __name__ == '__main__':
+    for i in range(1,9):
+        main(i,'train')
+
+    for i in range(1,9):
+        main(i,'test')
