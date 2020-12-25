@@ -13,6 +13,7 @@ import torchvision.transforms as transforms
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from pixelcnn import GatedPixelCNN
+from tqdm import tqdm
 
 import matplotlib.pyplot as plt
 
@@ -317,43 +318,107 @@ def evaluate(channel,show=True):
 
     return None
 
-def test():
-    path = "./output/ganomaly/NanjingRail_blocks/train/weights/netG.pth"
-    path_alpha = './models/cifar10_dim_128_lambda_40_zlambd_0_epochs_100.torch'
-    path_vq = './models/vqvae_anomaly.pth'
-    path_pixelcnn = './models/{0}/prior{1}.pt'.format('pixelcnn','C0008')
-
+def test(ch):
+    DATASET = 'C{0:04d}'.format(ch)
     opt = Options().parse()
-    
-    gan_network = Ganomaly(opt)
-    model_ganomaly = AnomalyModel(gan_network, path)
 
+ 
+    # alpha-GAN load path
+    epoch = 10
+    path_alpha =  './models/alphaGAN/rail{:02d}_epochs_{}.torch'.format(ch,epoch)
     from anomaly import model as alpha_model
     model_alpha = AnomalyModelAlpha(alpha_model, path_alpha)
+    detector_alpha = AnomalyDetector(model_alpha)
+
+    # ganomaly load path 
+    path = "./output/ganomaly/RailAnomaly_blocks{:02d}/train/weights/netG.pth".format(ch)
+    gan_network = Ganomaly(opt)
+    model_ganomaly = AnomalyModel(gan_network, path)
+    detector_ganomaly = AnomalyDetector(model_ganomaly)
+
+    # vqvae+pixelcnn load path
+
+    path_vq = './models/vqvae_anomaly{}.pth'.format(DATASET[3:])
+    path_pixelcnn = './models/{0}/prior{1}.pt'.format('pixelcnn',DATASET)
 
     from vqvae import vqvaemodel
     likelihood = GatedPixelCNN(512, 64,
         15, n_classes=1).cuda(1)
     model_vqvae = AnomalyModelVQ((vqvaemodel,likelihood), (path_vq,path_pixelcnn))
-    
-    detector_ganomaly = AnomalyDetector(model_ganomaly)
-    detector_alpha = AnomalyDetector(model_alpha)
     detector_vqvae = AnomalyDetector(model_vqvae)
+
+    # test data path
+    input_path = './input/railanomaly_{}'.format(DATASET)
+    output_path = './output/railanomaly_{}'.format(DATASET)
+
+    # read test data
+    normal_imgs, abnormal_imgs = read_test_images(ch)
+    test_types = {'abnormal','normal'}
+    if 'normal' in test_types:
+        test_type = 'normal'
+        print('{}:{}'.format(DATASET,test_type))
+        for tst_img in tqdm(normal_imgs):
+            num = tst_img.split('.')[1].split('_')[-1]
+            rec_img_a = output_path +'/{1}/{1}_alpha{2}_rec_img_{0}.png'.format(num,test_type,epoch)
+            rec_img_g = output_path +'/{1}/{1}_ganomaly_rec_img_{0}.png'.format(num,test_type)
+            rec_img_v = output_path +'/{1}/{1}_vqvae_rec_img_{0}.png'.format(num,test_type)
+            img = Image.open(tst_img)
+
+            rec_a,_ = detector_alpha.detect(img)
+            img_fake_a = Image.fromarray(rec_a)
+            img_fake_a.save(rec_img_a)
+
+            rec_g,_ = detector_ganomaly.detect(img)
+            img_fake_g = Image.fromarray(rec_g)
+            img_fake_g.save(rec_img_g)
+
+            rec_v,_ = detector_vqvae.detect(img)
+            img_fake_v = Image.fromarray(rec_v)
+            img_fake_v.save(rec_img_v)
+
+    if 'abnormal' in test_types:
+        test_type = 'abnormal'
+        print('{}:{}'.format(DATASET,test_type))
+        for tst_img in tqdm(abnormal_imgs):
+            num = tst_img.split('.')[1].split('_')[-1]
+            rec_img_a = output_path +'/{1}/{1}_alpha{2}_rec_img_{0}.png'.format(num,test_type,epoch)
+            rec_img_g = output_path +'/{1}/{1}_ganomaly_rec_img_{0}.png'.format(num,test_type)
+            rec_img_v = output_path +'/{1}/{1}_vqvae_rec_img_{0}.png'.format(num,test_type)
+            img = Image.open(tst_img)
+
+            rec_a,_ = detector_alpha.detect(img)
+            img_fake_a = Image.fromarray(rec_a)
+            img_fake_a.save(rec_img_a)
+
+            rec_g,_ = detector_ganomaly.detect(img)
+            img_fake_g = Image.fromarray(rec_g)
+            img_fake_g.save(rec_img_g)
+
+            rec_v,_ = detector_vqvae.detect(img)
+            img_fake_v = Image.fromarray(rec_v)
+            img_fake_v.save(rec_img_v)
     
+    # from testimage import testimages
 
+    # for test_type in test_types:
+    #     for num in testimages[DATASET][test_type]:
+    #         tst_img = input_path +'/{1}/{1}_tst_img_{0}.png'.format(num,test_type)
+    #         rec_img_a = input_path +'/{1}/{1}_alpha{2}_rec_img_{0}.png'.format(num,test_type,epoch)
+    #         rec_img_g = input_path +'/{1}/{1}_ganomaly_rec_img_{0}.png'.format(num,test_type)
+    #         rec_img_v = input_path +'/{1}/{1}_vqvae_rec_img_{0}.png'.format(num,test_type)
+    #         img = Image.open(tst_img)
 
-    for index in range(21,22):
-        img = Image.open('./data/test{}.jpg'.format(index))
-        rec_a = detector_alpha.detect(img)
-        rec_g,_ = detector_ganomaly.detect(img)
-        rec_v,_ = detector_vqvae.detect(img)
-        #img_fake_a = Image.fromarray(rec_a)
-        #img_fake_a.save('./data/fake{}_a.png'.format(index))
-        img_fake_g = Image.fromarray(rec_g)
-        img_fake_g.save('./data/fake{}_g.png'.format(index))
-        img_fake_v = Image.fromarray(rec_v)
-        img_fake_v.save('./data/fake{}_v.png'.format(index))
-    pass
+    #         rec_a,_ = detector_alpha.detect(img)
+    #         img_fake_a = Image.fromarray(rec_a)
+    #         img_fake_a.save(rec_img_a)
+
+    #         rec_g,_ = detector_ganomaly.detect(img)
+    #         img_fake_g = Image.fromarray(rec_g)
+    #         img_fake_g.save(rec_img_g)
+
+    #         rec_v,_ = detector_vqvae.detect(img)
+    #         img_fake_v = Image.fromarray(rec_v)
+    #         img_fake_v.save(rec_img_v)
 
 
 def main(channel, test_type, show=True ,show_img = False):
@@ -509,8 +574,9 @@ def main(channel, test_type, show=True ,show_img = False):
 
 
 if __name__ == '__main__':
-    #test()
+    for i in range(3,9):
+        test(i)
     pass
     # for ch in range(1,9):
-    main(6, 'normal', show_img=False)
+    # main(6, 'normal', show_img=False)
     # evaluate(8,show=True)        

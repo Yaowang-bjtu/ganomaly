@@ -20,6 +20,9 @@ import matplotlib.pyplot as plt
 from torchvision.utils import make_grid
 import pdb
 
+import matplotlib.pyplot as plt
+from sklearn import metrics
+
 class ChannelsToLinear(nn.Linear):
     """Flatten a Variable to 2d and apply Linear layer"""
     def forward(self, x):
@@ -103,7 +106,7 @@ for layer in (0,8):
 t = Variable(torch.randn(batch_size,3,32,32))
 assert E(t).size() == (batch_size,latent_dim)
 
-
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # generator network
 h = 128
 norm = nn.BatchNorm2d#None
@@ -175,9 +178,7 @@ def log_fn(d):
     print(d)
 
 def checkpoint_fn(model, epoch):
-    path =  './models/cifar10_dim_{}_lambda_{}_zlambd_{}_epochs_{}.torch'.format(
-        model.latent_dim, model.lambd, model.z_lambd, epoch
-    )
+    path =  './models/alphaGAN/rail01_epochs_{}.torch'.format(epoch)
     torch.save(model.state_dict(), path)
 
 def torchvision_dataset(dset_fn, train=True):
@@ -191,9 +192,18 @@ def torchvision_dataset(dset_fn, train=True):
         download=True)
     return torch.stack(list(zip(*dset))[0])*2-1
 
-if __name__ == "__main__":
+def test_fn(fn,fn2, epoch):
+    fn(None, epoch)
+
+def main(ch):
+
+    def checkpoint_fn_local(model, epoch):
+        path =  './models/alphaGAN/rail{:02d}_epochs_{}.torch'.format(ch,epoch)
+        torch.save(model.state_dict(), path)
+        print(path)
+
     opt = Options().parse()
-    dataset = "NanjingRail_blocks2"
+    dataset = "RailAnormaly_blocks{:02d}".format(ch)
     opt.batch_size = batch_size
     opt.isize = 32
     # dataloader = load_data(opt)
@@ -214,7 +224,7 @@ if __name__ == "__main__":
                          num_workers=int(opt.workers),
                          drop_last=False)
     
-    X_test = DataLoader(dataset=dataset_train,
+    X_test = DataLoader(dataset=dataset_test,
                          batch_size=opt.batchsize,
                          shuffle=False,
                          num_workers=int(opt.workers),
@@ -238,17 +248,80 @@ if __name__ == "__main__":
     
     model.fit(
         X_train, X_test,
-        n_iter=(2,1,1), n_epochs=100,
+        n_iter=(2,1,1), n_epochs=50,
         log_fn=log_fn, log_every=1,
-        checkpoint_fn=checkpoint_fn, checkpoint_every=2
+        checkpoint_fn=checkpoint_fn_local, checkpoint_every=10
     )
 
-    model.eval()
+    # model.eval()
 
-    z, x = model(128, mode='sample')
-    fig, ax = plt.subplots(1,1,figsize=(16,12))
-    ax.imshow(make_grid(
-        x.data, nrow=16, range=(-1,1), normalize=True
-    ).cpu().numpy().transpose(1,2,0), interpolation='nearest')
+    # z, x = model(128, mode='sample')
+    # fig, ax = plt.subplots(1,1,figsize=(16,12))
+    # ax.imshow(make_grid(
+    #     x.data, nrow=16, range=(-1,1), normalize=True
+    # ).cpu().numpy().transpose(1,2,0), interpolation='nearest')
 
-    plt.show()
+    # plt.show()
+
+def test(ch):
+    epoch = 10
+    path = './models/alphaGAN/rail{:02d}_epochs_{}.torch'.format(ch,epoch)
+    opt = Options().parse()
+    dataset = "RailAnormaly_blocks{:02d}".format(ch)
+    opt.batch_size = batch_size
+    opt.isize = 32
+    # dataloader = load_data(opt)
+
+    transform = transforms.Compose([transforms.Scale(opt.isize),
+                                        transforms.CenterCrop(opt.isize),
+                                        transforms.ToTensor(),
+                                        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)), ])
+    dataset_test = ImageFolder('./data/{}/test'.format(dataset),transform)
+    test_loader = DataLoader(dataset=dataset_test,
+                         batch_size=opt.batchsize,
+                         shuffle=False,
+                         num_workers=int(opt.workers),
+                         drop_last=True)   
+
+    model.load_state_dict(torch.load(path))
+    model.eval() 
+    normal_likelihood = []
+    abnormal_likelihood = []
+    for x, label in test_loader:
+        images = x.to(device)
+        recon = model(images, mode = 'reconstruct')
+        res = torch.zeros(batch_size).to(device)
+        for i in range(batch_size):
+            res[i]=torch.mean((images[i] - recon[i])**2)
+      
+        normal_res = res[label == 0]
+        normal_likelihood.append(normal_res.cpu().detach().numpy())
+        abnormal_res = res[label == 1]
+        abnormal_likelihood.append(abnormal_res.cpu().detach().numpy())
+        #print(res)
+    #print(np.mean(np.hstack(normal_likelihood)))
+    #print(np.mean(np.hstack(abnormal_likelihood)))
+
+    normal_likelihood = np.hstack(normal_likelihood)
+    normal_label = np.zeros(normal_likelihood.size)
+    abnormal_likelihood = np.hstack(abnormal_likelihood)
+    abnormal_label = np.ones(abnormal_likelihood.size)
+
+    y = np.hstack([normal_label,abnormal_label])
+    scorce = np.hstack([normal_likelihood,abnormal_likelihood])
+
+    fpr, tpr, _ = metrics.roc_curve(y, scorce)
+    AUC = metrics.auc(fpr, tpr)
+    print('C000{}: AUC = {}'.format(ch,AUC))
+
+    # plt.hist([normal_likelihood,abnormal_likelihood],bins=70,density=True)
+    # plt.figure()
+    # plt.plot(fpr,tpr)
+    # plt.show()    
+
+if __name__ == "__main__":
+    # for i in range(1,9):
+    #     main(i)
+    for i in range(1,9):
+        test(i)
+
