@@ -192,14 +192,23 @@ def likelihood_test(DATASET):
     AUC = metrics.auc(fpr, tpr)
     print(AUC)
 
-    plt.hist([normal_likelihood,abnormal_likelihood],bins=70,density=True)
-    plt.figure()
-    plt.plot(fpr,tpr)
-    plt.show()
+    return normal_likelihood, abnormal_likelihood, fpr, tpr 
+
+    # plt.hist([normal_likelihood,abnormal_likelihood],bins=70,density=True)
+    # plt.figure()
+    # plt.plot(fpr,tpr)
+    # plt.show()
 
 
 
 if __name__ == '__main__':
 
     #main('')
-    likelihood_test('C0007')
+    result_list = []
+    for i in range(1,3):
+        dataset = 'C{:04d}'.format(i)
+        print(dataset)
+        result = likelihood_test(dataset)
+        result_list.append(result)
+
+    
