@@ -259,6 +259,9 @@ def read_test_images(channel):
     return normal_imgs, abnormal_imgs 
 
 def evaluate(channel,show=True):
+    '''
+    anomaly detection based on latent likelihood
+    '''
     normal_imgs, abnormal_imgs = read_test_images(channel)
 
     DATASET = 'C{0:04d}'.format(channel)
@@ -319,6 +322,9 @@ def evaluate(channel,show=True):
     return None
 
 def test(ch):
+    '''
+    reconstruction test
+    '''
     DATASET = 'C{0:04d}'.format(ch)
     opt = Options().parse()
 
@@ -422,23 +428,13 @@ def test(ch):
 
 
 def main(channel, test_type, show=True ,show_img = False):
+    '''
+    anomaly detection based on reconstruction
+    '''
 
     normal_imgs, abnormal_imgs = read_test_images(channel)
-
-    DATASET = 'C{0:04d}'.format(channel)
-    #DATASET = 'C0006'
-    path_vq = './models/vqvae_anomaly{}.pth'.format(DATASET[3:])
-    path_pixelcnn = './models/{0}/prior{1}.pt'.format('pixelcnn',DATASET)
-    #output_path = './output/railanomaly_{}'.format(DATASET)
-    input_path = './input/railanomaly_{}'.format(DATASET)
-
-    opt = Options().parse()
-
-    from vqvae import vqvaemodel
-    likelihood = GatedPixelCNN(512, 64,
-        15, n_classes=1).cuda(1)
-    model_vqvae = AnomalyModelVQ((vqvaemodel,likelihood), (path_vq,path_pixelcnn))
-    detector_vqvae = AnomalyDetector(model_vqvae)
+   
+    detector_vqvae = load_detector(channel)
 
     # -------------------------------全部图像测试-------------------------------------------
     nor_correct = []
@@ -509,30 +505,42 @@ def main(channel, test_type, show=True ,show_img = False):
     save_test_result('./test_result_open5.txt',overall_res,nor_incorrect,ab_incorrect)
 
 
-    # -------------------------------部分图像测试-----------------------------------------
-    # from testimage import testimages
-    # # test_type = 'abnormal'
-    # for num in testimages[DATASET][test_type]:
-    #     tst_img = input_path +'/{1}/{1}_tst_img_{0}.png'.format(num,test_type)
-    #     rec_img = input_path +'/{1}/{1}_rec_img_{0}.png'.format(num,test_type)
-    #     img = Image.open(tst_img)
-    #     rec, error = detector_vqvae.detect(img)
-    #     #img_rec = Image.fromarray(rec)
-    #     #img_rec.save(rec_img)
-    #     #print(tst_img, rec_img)
-    #     #print(error)
-    #     resized = detector_vqvae.resize_input(img)
-    #     is_abnormal,diff1 = abnormal_from_reconstruction(resized,rec)
-    #     if is_abnormal:
-    #         str_result = 'abnormal'
-    #     else:
-    #         str_result = 'normal'
-    #     print('Input: {}, Result: {}'.format(test_type, str_result))
-        # locations = abnormal_from_error(rec_error,ratio = 3, absmax = 150)
+
+
+def visulization(channel):
+
+    # load detector
+    detector_vqvae = load_detector(channel)
+
+    #-------------------------------部分图像测试-----------------------------------------
+    from testimage import testimages
+    test_type = 'abnormal'
+    DATASET = 'C{0:04d}'.format(channel)
+    input_path = './input/railanomaly_{}'.format(DATASET)
+
+    for num in testimages[DATASET][test_type]:
+        tst_img = input_path +'/{1}/{1}_tst_img_{0}.png'.format(num,test_type)
+        rec_img = input_path +'/{1}/{1}_rec_img_{0}.png'.format(num,test_type)
+        out_img = input_path +'/{1}/{1}_out_img_{0}.png'.format(num,test_type)
+        out_img1 = input_path +'/{1}/{1}_out1_img_{0}.png'.format(num,test_type)
+        img = Image.open(tst_img)
+        rec, error = detector_vqvae.detect(img)
+        resized = detector_vqvae.resize_input(img)
+        is_abnormal, diff1 = abnormal_from_reconstruction(resized,rec)
+        locations = abnormal_from_error(error)
+
+        if is_abnormal:
+            str_result = 'abnormal'
+        else:
+            str_result = 'normal'
+        print('Input: {}, Result: {}'.format(test_type, str_result))
+
+        # if locations.size == 0:
+        #     incorrect.append(tst_img)
+        # else:
+        #     correct.append(tst_img)
         
-        # import pickle
-        # pickle.dump(error,open('errors.pkl','wb'))
-        # diff = np.abs(rec[:,:,0].astype(float)-resized[:,:,0].astype(float))
+        
         # plt.imshow(rec_error)
         # current_axis = plt.gca()   
         # add_frame(locations, current_axis,32,32)    
@@ -540,43 +548,66 @@ def main(channel, test_type, show=True ,show_img = False):
         # plt.figure()
         # plt.imshow(diff1)
         # current_axis = plt.gca()
-        # # locations = abnormal_from_error(error)
-
-        # print(locations)
-        
         # add_frame(locations, current_axis,32,32)
 
         # plt.figure()
         # plt.imshow(img)
         # current_axis = plt.gca()
-        # locations = abnormal_from_error(error)
-        
         # add_frame(locations, current_axis)
-        # resized_img = Image.fromarray(resized)
-        # #resized_img.save('./resize_test.png')
-        # diff = np.abs(rec[:,:,0].astype(float)-resized[:,:,0].astype(float))
-        # #img_diff = Image.fromarray(diff)
-        # #img_diff.save('./diff.png')
-        # plt.subplot(1,3,1)
-        # plt.imshow(resized_img)
-        # plt.subplot(1,3,2)
-        # plt.imshow(img_rec)
-        # plt.subplot(1,3,3)
-        # plt.imshow(diff)
+        # fig = plt.gcf()
+        # fig.savefig(out_img, format='png')
 
-        # plt.show()
-    #     if locations.size == 0:
-    #         incorrect.append(tst_img)
-    #     else:
-    #         correct.append(tst_img)
+        plt.figure(figsize=(20,4),dpi=200)
         
-    # print(correct,incorrect)
+        plt.subplot(1,4,1)
+        plt.axis('off')
+        plt.imshow(resized)
+        plt.subplot(1,4,2)
+        plt.axis('off')
+        
+        plt.imshow(rec)
+        plt.subplot(1,4,3)
+        plt.axis('off')
+        plt.gray()
+        plt.imshow(diff1)
+        plt.subplot(1,4,4)
+        plt.axis('off')
 
+        plt.imshow(resized)
+        current_axis = plt.gca()
+        add_frame(locations, current_axis,32,32)
+        fig = plt.gcf()
+        fig.savefig(out_img1, format='png')
+
+        #plt.show()
+        
+        
+
+def load_detector(channel):
+    '''
+    load Anomaly detector based on vq-vae
+    '''
+    DATASET = 'C{0:04d}'.format(channel)
+    path_vq = './models/vqvae_anomaly{}.pth'.format(DATASET[3:])
+    path_pixelcnn = './models/{0}/prior{1}.pt'.format('pixelcnn',DATASET)
+    
+
+    opt = Options().parse()
+
+    from vqvae import vqvaemodel
+    likelihood = GatedPixelCNN(512, 64,
+        15, n_classes=1).cuda(1)
+    model_vqvae = AnomalyModelVQ((vqvaemodel,likelihood), (path_vq,path_pixelcnn))
+    detector_vqvae = AnomalyDetector(model_vqvae)
+
+    return detector_vqvae
 
 if __name__ == '__main__':
-    for i in range(3,9):
-        test(i)
-    pass
+    for i in range(1,9):
+    #     main(i)
+        visulization(i)
+    # pass
     # for ch in range(1,9):
     # main(6, 'normal', show_img=False)
+    
     # evaluate(8,show=True)        

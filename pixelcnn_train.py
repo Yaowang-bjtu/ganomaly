@@ -199,16 +199,48 @@ def likelihood_test(DATASET):
     # plt.plot(fpr,tpr)
     # plt.show()
 
+def save_result(file, result):
+    import pickle
+    pickle.dump(result,open(file,'wb'))
 
+def read_result(file):
+    import pickle
+    return pickle.load(open(file,'rb'))
+
+
+def visulization(result):
+    print(len(result))
+    normal_likelihood = []
+    abnormal_likelihood = []
+    for nl, al, _, _ in result:
+        normal_likelihood.append(nl)
+        abnormal_likelihood.append(al)
+    normal_likelihood = np.hstack(normal_likelihood)
+    abnormal_likelihood = np.hstack(abnormal_likelihood)
+    plt.hist([normal_likelihood,abnormal_likelihood],bins=70,density=True)
+
+    #plt.show()
+    plt.figure()
+    for _, _, fpr, tpr in result:
+        plt.plot(fpr,tpr)
+    plt.show()
 
 if __name__ == '__main__':
 
-    #main('')
-    result_list = []
-    for i in range(1,3):
-        dataset = 'C{:04d}'.format(i)
-        print(dataset)
-        result = likelihood_test(dataset)
-        result_list.append(result)
+    # #main('')
+    # result_list = []
+    # for i in range(1,9):
+    #     dataset = 'C{:04d}'.format(i)
+    #     print(dataset)
+    #     result = likelihood_test(dataset)
+    #     result_list.append(result)
+
+    # save_result('likelihood.pkl',result_list)
+    result = read_result('likelihood.pkl')
+    visulization(result)
+
+    
+
+
 
     
